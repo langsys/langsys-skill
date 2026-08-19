@@ -35,6 +35,23 @@ never been touched by Langsys. Every item below is something the trial hit.
 - **The installer documented `-g` but only handled `--global`.** `-g` and `-n`
   now work.
 
+### Fixed — reported from a live static site
+- **`scan` understated a real project by roughly half.** It counted 71 markup
+  sites while the largest single body of copy — a typed content module holding
+  taglines, blurbs, feature bodies and spec labels — went unmentioned, because
+  bare literals in `.ts` are not sites. The blind spot was correctly declared and
+  still left the reader with a number that was wrong by 2×. `scan` now reports a
+  **CONTENT MODULES** section: it looks, gives the magnitude, names the files, and
+  refuses to fold them into the site totals, because it cannot tell a tagline from
+  a log line and a wrong total is worse than an honest range.
+- **`scan` routed a fully prerendered site to the SSR track.** With
+  `prerender = true` and `adapter-static` there is no server at runtime, so that
+  track's per-request `Accept-Language` seeding cannot run — the recipe is
+  unexecutable on that deployment. `scan` now detects the posture and says so
+  before routing, and `ssr/sveltekit.md` opens with a section on what breaks, what
+  it costs (translated pages do not appear in the HTML, so they do not rank), and
+  the three real options.
+
 ### Changed
 - **README rewritten.** It led with the tool's own file layout and justified
   itself in terms of correcting an agent's wrong beliefs, before ever showing

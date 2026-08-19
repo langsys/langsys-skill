@@ -991,3 +991,64 @@ test('installer accepts -g and -n as well as the long flags', () => {
     assert.ok(!existsSync(join(fakeHome, '.langsys')), '-n must not write');
     rmSync(fakeHome, { recursive: true, force: true });
 });
+
+test('scan reports content modules as a magnitude, not as sites', () => {
+    // Reported from a real static site: scan counted 71 sites while the largest
+    // body of copy — a typed content module of taglines, blurbs and feature
+    // bodies — went unmentioned because bare .ts literals are not sites. The
+    // blind spot was correctly declared and still understated the job by half.
+    //
+    // The fix looks, reports magnitude, and refuses precision: these must NEVER
+    // be folded into the site totals, because scan cannot tell a tagline from a
+    // log line and a wrong total is worse than an honest range.
+    const dir = project({ svelte: '^5.0.0' }, {
+        'src/lib/products.ts': `export const products = [
+  { slug: 'a', tagline: 'Mission control for your worlds.',
+    blurb: 'Game server hosting that lives in your pocket.',
+    features: [{ title: 'Provisioned with ownership at birth', body: 'Every world is yours from the first boot.' }] },
+];
+`,
+    });
+    const j = scan(dir);
+    assert.ok(j.contentModules.length >= 1, 'the content module must be surfaced');
+    assert.match(j.contentModules[0].file, /products\.ts$/);
+    assert.ok(j.contentModules[0].count >= 4);
+    assert.equal(j.totals.sites, 0, 'and must NOT inflate the site count');
+});
+
+test('NEGATIVE: ordinary code is not reported as a content module', () => {
+    // The guardrail. Paths, class lists, identifiers and log lines are not copy.
+    const dir = project({ svelte: '^5.0.0' }, {
+        'src/api.ts': `const BASE = '/api/v1/users';
+const CLS = 'flex items-center gap-2';
+const URL2 = 'https://example.com/a/b';
+const KEY = 'user_id';
+const TPL = \`<div>\${x}</div>\`;
+`,
+    });
+    assert.deepEqual(scan(dir).contentModules, []);
+});
+
+test('scan flags a prerendered site before routing it to the SSR track', () => {
+    // A fully prerendered SvelteKit site has no server at runtime, so the SSR
+    // track's per-request Accept-Language seeding cannot run. scan routes to that
+    // track from the meta-framework alone, so without this it sends people to a
+    // recipe their deployment cannot execute.
+    const dir = project({ svelte: '^5.0.0', '@sveltejs/kit': '^2.0.0', '@sveltejs/adapter-static': '^3.0.0' }, {
+        'src/routes/+layout.ts': 'export const prerender = true;\n',
+    });
+    const j = scan(dir);
+    assert.ok(j.profile.prerender, 'prerendered posture must be detected');
+    assert.match(j.profile.prerender.staticAdapter, /adapter-static/);
+    const out = execFileSync('node', [join(root, 'src/bin/scan.mjs'), dir],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    assert.match(out, /PRERENDERED \/ STATIC/);
+    assert.match(out, /CANNOT run here/);
+});
+
+test('NEGATIVE: a server-rendered SvelteKit app is not flagged as prerendered', () => {
+    const dir = project({ svelte: '^5.0.0', '@sveltejs/kit': '^2.0.0', '@sveltejs/adapter-node': '^5.0.0' }, {
+        'src/routes/+layout.server.ts': 'export async function load() { return {}; }\n',
+    });
+    assert.equal(scan(dir).profile.prerender, null);
+});

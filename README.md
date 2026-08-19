@@ -95,7 +95,7 @@ Every claim is checked against the **published npm tarball** at a pinned version
 ## Development
 
 ```bash
-node --test test/run.mjs           # 74 tests
+node --test test/run.mjs           # 78 tests
 node src/lint/generate-rules.mjs   # regenerate per-language rule files
 ```
 

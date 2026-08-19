@@ -418,6 +418,39 @@ function classify(node, src, file, depth, inLangsys) {
     for (const c of kids) classify(c, src, file, depth + 1, inLangsys);
 }
 
+/**
+ * Prose-shaped string literals in a .ts/.js module.
+ *
+ * The blind spot this addresses: site counts EXCLUDE bare literals in code,
+ * because nothing separates a user-visible string from a CSS class or an API
+ * path. That reasoning is sound and the omission is still correct — but on a
+ * site whose copy lives in a typed content module (`products.ts` exporting
+ * taglines, blurbs, feature bodies, spec labels), "not counted" meant scan
+ * reported half the real job and said so only in a footnote.
+ *
+ * So: look, report the MAGNITUDE, and refuse to report precision. These are
+ * reported as candidates in their own section, never folded into site totals,
+ * because a wrong number here is worse than an honest range.
+ */
+function proseLiterals(src) {
+    const code = blankRegions(src, /\/\*[\s\S]*?\*\//g, /(^|[^:'"\\])\/\/[^\n]*/g);
+    const out = [];
+    for (const m of code.matchAll(/(['"`])((?:[^\\\n]|\\.)*?)\1/g)) {
+        const v = m[2];
+        if (!/[A-Za-z]{2}/.test(v)) continue;
+        const words = v.trim().split(/\s+/);
+        if (words.length < 2) continue;                     // single tokens: identifiers, classes, paths
+        if (/^[\w./-]+$/.test(v.trim())) continue;           // paths, kebab ids
+        if (/^(https?:|\/|\.\/|#|@)/.test(v.trim())) continue; // urls, routes, selectors
+        if (/[{}<>]|=>|\$\{/.test(v)) continue;              // template/markup fragments
+        out.push({ value: v, line: lineOf(code, m.index) });
+    }
+    return out;
+}
+
+const contentModules = [];      // { file, count, samples }
+const CONTENT_MIN = 4;          // below this it is incidental, not a content store
+
 // ── Call-site scanning ───────────────────────────────────────────────────────
 
 const CALL_RE = /(^|[^\w$.>])(\$?t|__|_e|trans|gettext|dgettext|formatMessage|\$tc|tc)\s*\(/g;
@@ -614,6 +647,37 @@ function frameworkBlocker() {
     return null;
 }
 
+/**
+ * A fully prerendered site has no server at runtime, so any SSR guidance that
+ * seeds translations per REQUEST cannot run there. Detected because scan routes
+ * to the SSR track from the meta-framework alone, and confidently sending someone
+ * to a seeding recipe their deployment cannot execute is worse than not routing.
+ */
+function prerenderPosture() {
+    if (!has('@sveltejs/kit') && !has('next') && !has('nuxt')) return null;
+    const staticAdapter = Object.keys(deps).find((d) => /adapter-static|next-export/.test(d));
+    let prerenderAll = false;
+    const walkRoutes = (dir, depth = 0) => {
+        if (depth > 6 || prerenderAll) return;
+        let entries = [];
+        try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+            const fp = join(dir, e.name);
+            if (e.isDirectory()) { walkRoutes(fp, depth + 1); continue; }
+            if (!/^\+(layout|page)(\.server)?\.(ts|js)$/.test(e.name)) continue;
+            const txt = readText(fp) ?? '';
+            if (/export\s+const\s+prerender\s*=\s*true/.test(txt)) {
+                // A root +layout marks the whole tree.
+                if (/routes\/?$/.test(dir) || dir.endsWith('routes')) prerenderAll = true;
+                else if (!prerenderAll) prerenderAll = 'partial';
+            }
+        }
+    };
+    walkRoutes(join(projectRoot, 'src', 'routes'));
+    if (!staticAdapter && !prerenderAll) return null;
+    return { staticAdapter: staticAdapter ?? null, prerenderAll };
+}
+
 const LANGSYS_PKGS = ['langsys-js-typescript', 'langsys-js-react', 'langsys-js-vue', 'langsys-js-svelte'];
 const langsysInstalled = LANGSYS_PKGS.filter(has);
 const langsysPhp = Boolean(phpDeps['langsys/langsys-php']);
@@ -751,6 +815,15 @@ function scanFile(file) {
     filesScanned.code++;
     const code = blankRegions(src, /\/\*[\s\S]*?\*\//g, /(^|[^:'"\\])\/\/[^\n]*/g);
     scanCalls(code, file, incumbent, hasLangsys);
+
+    const prose = proseLiterals(src);
+    if (prose.length >= CONTENT_MIN) {
+        contentModules.push({
+            file: rel(file),
+            count: prose.length,
+            samples: prose.slice(0, 3).map((x) => trim(x.value)),
+        });
+    }
 }
 
 function walk(dir, depth = 0) {
@@ -816,6 +889,7 @@ const profile = {
     tracks,
     route: incumbents.length ? 'migrate' : 'integrate',
     blocker: frameworkBlocker(),
+    prerender: prerenderPosture(),
 };
 
 // ── Report ───────────────────────────────────────────────────────────────────
@@ -827,7 +901,7 @@ const profile = {
  * exists to prevent.
  */
 const BLIND_SPOTS = [
-    'Bare string literals in .ts/.js are NOT counted. Nothing reliably separates a user-visible string from a CSS class, an API path, or a log line, and a fabricated number here would be worse than no number.',
+    'Bare string literals in .ts/.js are not counted as SITES — nothing reliably separates a user-visible string from a CSS class or an API path. Files holding several of them are reported under CONTENT MODULES as a magnitude instead, because staying silent understated real projects by roughly half.',
     'Text assembled at runtime, or supplied by a server or CMS, is invisible to a static scan.',
     'Site counts are an upper bound on WORK, not an estimate of translation cost. Cost is the deduplicated phrase count, and dedup happens at registration.',
     'The primitive shown is the FIRST decision only. Whether a <Phrase> should nest inside a <Translate> is a separate decision this tool does not make (see core/choosing-primitives.md).',
@@ -839,6 +913,7 @@ if (asJson) {
         totals: { sites: sites.length, byKind, byBucket, hazards: hazards.length },
         sites,
         hazards,
+        contentModules,
         migrated: { ...migrated, files: [...migrated.files] },
         notExamined: {
             byExt: Object.fromEntries(notExamined.byExt),
@@ -883,6 +958,16 @@ if (baseLocaleHints.length) {
 } else {
     row('Base locale', 'NOT FOUND — ask. Do not assume en-US; en-GB is a different catalog.');
 }
+if (profile.prerender) {
+    const pr = profile.prerender;
+    console.log(`\n  ! PRERENDERED / STATIC${pr.staticAdapter ? ` (${pr.staticAdapter})` : ''}${pr.prerenderAll === true ? ', prerender = true at the route root' : ''}`);
+    console.log(`    There is no server at runtime, so the SSR track's per-request seeding`);
+    console.log(`    (reading Accept-Language in +layout.server.ts) CANNOT run here.`);
+    console.log(`    Client-only Langsys works, but translated text never reaches the HTML —`);
+    console.log(`    which on a marketing site means those locales do not rank.`);
+    console.log(`    See the prerendered section of the SSR track before following it.`);
+}
+
 if (profile.blocker) {
     const b = profile.blocker;
     console.log(`\n  ✗ BLOCKED: ${b.framework} is declared as ${b.declared}; ${profile.recommendedPackage} requires ${b.framework} >= ${b.floor}.`);
@@ -910,6 +995,25 @@ if (byKind.Translate > 0) {
     console.log(`\n  OVERLAP: <Translate> counts do not ADD to the others. Adopting <Translate> on a`);
     console.log(`  container replaces the individual t() sites beneath it — the two rows are`);
     console.log(`  alternative treatments of the same markup, and which one is right is a judgement.`);
+}
+
+if (contentModules.length) {
+    const total = contentModules.reduce((a, m) => a + m.count, 0);
+    H(`CONTENT MODULES  (~${total} strings, NOT counted above)`);
+    console.log(`  Code files holding prose. These are CANDIDATES, not sites: scan cannot tell a`);
+    console.log(`  tagline from a log message, so this is a magnitude, not a total. Confirm by hand —`);
+    console.log(`  but do not skip them; they are often the largest single body of copy in a project.\n`);
+    for (const m of contentModules.sort((a, b) => b.count - a.count).slice(0, TOP)) {
+        console.log(`  ${num(m.count)}  ${m.file}`);
+        for (const sample of m.samples) console.log(`         · ${sample}`);
+    }
+    if (contentModules.length > TOP) {
+        console.log(`\n  Showing ${TOP} of ${contentModules.length} files. Display limit only.`);
+    }
+    console.log(`\n  These convert with t()/$t() like any other string. Read through a variable —`);
+    console.log(`  $t(product.tagline) — is fine WHILE the values stay authored constants, but it`);
+    console.log(`  defeats every static check here, so nothing warns you the day someone makes the`);
+    console.log(`  field dynamic. Say so in a comment at the call site.`);
 }
 
 H('BY EFFORT');
