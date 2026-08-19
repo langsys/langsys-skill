@@ -1,4 +1,4 @@
-id: "langsys-reversed-t-arguments"
+id: "langsys-reversed-t-arguments-tsx"
 language: Tsx
 severity: error
 message: Reversed t() arguments — the phrase comes first, the category second

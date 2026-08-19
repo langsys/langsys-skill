@@ -210,13 +210,42 @@ export function C({ user, name, count, when }: any) {
     assert.equal(sg([file]), '');
 });
 
-test('every generated rule file parses', () => {
-    // A rule emitted for a grammar that cannot parse its patterns makes ast-grep
-    // reject the file and abort the WHOLE scan — so a bad rule silently disables
-    // every other rule. This is the guard for that.
+test('the ruleset loads without ANY ast-grep error', () => {
+    // A rule ast-grep refuses makes it abort the WHOLE scan, so one bad rule
+    // silently disables every other rule — and the CI lint step (`|| true`)
+    // then reports the abort as clean.
+    //
+    // This guard used to match `Cannot parse rule` alone and therefore missed
+    // `Duplicate rule id`, which is the same failure with different wording:
+    // ids must be unique ACROSS FILES, and every JS/TS rule is emitted three
+    // times. ast-grep <0.40 tolerated it; 0.45 does not. Matching the CLASS
+    // rather than one message is the point — the next abort will be worded
+    // differently again.
+    // The assertion is deliberately not a list of failure messages — enumerating
+    // them is what let `Duplicate rule id` through. On a file with NO findings
+    // ast-grep prints nothing at all, so any output whatsoever means something
+    // went wrong, whatever it decides to call it next release.
+    //
+    // Note the exit code is useless here: ast-grep exits 0 even when it aborts.
     const { file } = fixture('parse', 'const x = 1;\n', '.ts');
-    const out = sg([file]);
-    assert.doesNotMatch(out, /Cannot parse rule/, out.slice(0, 300));
+    const out = sg([file]).trim();
+    assert.equal(out, '', `expected silence on a clean file, got: ${out.slice(0, 400)}`);
+});
+
+test('every rule id is unique across the generated files', () => {
+    // Asserted on the FILES, independent of which ast-grep is installed. The
+    // duplicate shipped because the only check ran through a CLI old enough to
+    // tolerate it — a guard that depends on the tool it is guarding against.
+    const dir = join(root, 'src/lint/rules');
+    const ids = readdirSync(dir).filter((f) => f.endsWith('.yml')).map((f) => {
+        const m = /^id:\s*"?([^"\n]+)"?/m.exec(readFileSync(join(dir, f), 'utf8'));
+        assert.ok(m, `${f} has no id`);
+        return m[1].trim();
+    });
+    const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
+    assert.deepEqual([...new Set(dupes)], [],
+        'ast-grep requires ids unique across files and aborts the entire scan on a collision');
+    assert.ok(ids.length >= 22, `expected the full ruleset, saw ${ids.length}`);
 });
 
 // ── PHP catalog pollution ────────────────────────────────────────────────────

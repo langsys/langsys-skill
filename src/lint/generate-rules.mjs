@@ -296,9 +296,16 @@ A double-quoted string with NO interpolation is fine and is not flagged.`,
   },
 ];
 
+// ast-grep requires rule ids to be unique ACROSS FILES, not per language. A rule
+// emitted for three grammars therefore needs three distinct ids — ast-grep 0.45
+// rejects the duplicate set outright and aborts the entire scan, which the CI
+// lint step (`|| true`) would then report as clean. Older versions tolerated it,
+// so this surfaced only on a clean checkout with a current CLI.
+const ruleId = (rule, lang) => `langsys-${rule.id}-${lang.toLowerCase()}`;
+
 function toYaml(rule, lang) {
   const body = {
-    id: `langsys-${rule.id}`,
+    id: ruleId(rule, lang),
     language: lang,
     severity: rule.severity,
     message: rule.message,

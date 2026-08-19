@@ -1,4 +1,4 @@
-id: "langsys-php-no-sprintf-phrase"
+id: "langsys-php-no-sprintf-phrase-php"
 language: Php
 severity: error
 message: sprintf() as a Langsys phrase — registers a new catalog entry per value

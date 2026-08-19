@@ -1,4 +1,4 @@
-id: "langsys-php-no-concatenated-phrase"
+id: "langsys-php-no-concatenated-phrase-php"
 language: Php
 severity: error
 message: Concatenated string as a Langsys phrase — registers a new catalog entry per value

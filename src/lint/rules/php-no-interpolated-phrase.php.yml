@@ -1,4 +1,4 @@
-id: "langsys-php-no-interpolated-phrase"
+id: "langsys-php-no-interpolated-phrase-php"
 language: Php
 severity: error
 message: "Interpolated double-quoted string as a Langsys phrase — registers a new catalog entry per value"

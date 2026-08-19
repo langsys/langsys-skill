@@ -1,4 +1,4 @@
-id: "langsys-no-concatenated-phrase"
+id: "langsys-no-concatenated-phrase-typescript"
 language: TypeScript
 severity: error
 message: Concatenated string as a Langsys phrase — registers a new catalog entry per value

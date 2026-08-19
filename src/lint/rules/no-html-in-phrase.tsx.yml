@@ -1,4 +1,4 @@
-id: "langsys-no-html-in-phrase"
+id: "langsys-no-html-in-phrase-tsx"
 language: Tsx
 severity: error
 message: HTML markup inside a t() phrase — it will never render as markup

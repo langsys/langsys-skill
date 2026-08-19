@@ -1,4 +1,4 @@
-id: "langsys-no-init-apiurl"
+id: "langsys-no-init-apiurl-typescript"
 language: TypeScript
 severity: error
 message: "`apiUrl` is not a field on iLangsysInitConfig — it is silently dropped"

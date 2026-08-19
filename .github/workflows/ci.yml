@@ -22,7 +22,11 @@ jobs:
         with: { node-version: '20' }
 
       - name: Install ast-grep
-        run: npm install -g @ast-grep/cli
+        # PINNED. Unpinned, an upstream release breaks the build on a commit that
+        # changed nothing — 0.45 began rejecting duplicate rule ids that 0.39
+        # tolerated, and the failure arrived on an unrelated push. Bump this
+        # deliberately, so the breakage lands in the commit that opted into it.
+        run: npm install -g @ast-grep/cli@0.45.1
 
       - name: Rule files are in sync with their generator
         # Rules are generated from one source of truth so per-language copies
@@ -37,8 +41,25 @@ jobs:
 
       - name: Lint the skill's own examples
         # The payload's code samples must obey the rules the payload teaches.
+        #
+        # `|| true` is deliberate — the docs deliberately SHOW anti-patterns, so
+        # findings here are expected. But it also swallowed a total scan abort,
+        # which is how a duplicate-rule-id bug reported itself as clean. So the
+        # two outcomes are now told apart: findings are tolerated, a ruleset that
+        # fails to LOAD is not.
         run: |
-          ast-grep scan -c src/lint/sgconfig.yml src/ || true
+          ast-grep scan -c src/lint/sgconfig.yml src/ 2>&1 | tee /tmp/lint.txt || true
+          # ast-grep prints "Error: N error(s) found in code." on a SUCCESSFUL
+          # scan that found things, and exits 0 even when it aborts — so neither
+          # the word "Error" nor the exit code discriminates. The reliable signal
+          # is the positive one: a scan that ran always says "Scan succeeded".
+          # Keying on that survives failure wordings we have not seen yet, which
+          # is the whole reason this check needed rewriting once already.
+          if grep -q 'Error:' /tmp/lint.txt && ! grep -q 'Scan succeeded' /tmp/lint.txt; then
+            echo "::error::ast-grep did not load the ruleset — the scan aborted, it did not pass"
+            cat /tmp/lint.txt
+            exit 1
+          fi
           node src/lint/markup-check.mjs src/skill/ || true
 
       - name: Installer smoke test (project + global scopes)

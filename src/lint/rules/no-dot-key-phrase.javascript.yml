@@ -1,4 +1,4 @@
-id: "langsys-no-dot-key-phrase"
+id: "langsys-no-dot-key-phrase-javascript"
 language: JavaScript
 severity: error
 message: "Dot-separated key passed to t() — Langsys uses the phrase itself as the key"

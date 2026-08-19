@@ -1,4 +1,4 @@
-id: "langsys-no-template-literal-phrase"
+id: "langsys-no-template-literal-phrase-tsx"
 language: Tsx
 severity: error
 message: Template literal as a Langsys phrase — registers a new catalog entry per value

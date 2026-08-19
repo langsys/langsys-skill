@@ -1,4 +1,4 @@
-id: "langsys-reversed-t-arguments"
+id: "langsys-reversed-t-arguments-typescript"
 language: TypeScript
 severity: error
 message: Reversed t() arguments — the phrase comes first, the category second

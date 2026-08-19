@@ -1,4 +1,4 @@
-id: "langsys-no-object-param-value"
+id: "langsys-no-object-param-value-tsx"
 language: Tsx
 severity: error
 message: "Object or array as a params value — only string | number | Date | boolean are allowed"
