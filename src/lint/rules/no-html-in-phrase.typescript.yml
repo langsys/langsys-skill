@@ -1,0 +1,21 @@
+id: "langsys-no-html-in-phrase"
+language: TypeScript
+severity: error
+message: HTML markup inside a t() phrase — it will never render as markup
+note: |
+  A t() phrase is rendered as text. Tags inside it are escaped or shown literally.
+  For a sentence that contains inline markup, use <Phrase>, which keeps the run as
+  one translatable phrase and reconstitutes the real elements around the
+  translation.
+
+    t('Based on <strong>5</strong> reviews')                  // wrong
+    <Phrase params={{ n }}>Based on %n% <strong>reviews</strong></Phrase>  // right
+rule:
+  any:
+    - pattern: "t('$P')"
+    - pattern: "t('$P', $$$REST)"
+    - pattern: "$t(\"$P\")"
+    - pattern: "$t(\"$P\", $$$REST)"
+constraints:
+  P:
+    regex: "<\\s*/?\\s*[a-zA-Z][a-zA-Z0-9]*(\\s[^>]*)?>"

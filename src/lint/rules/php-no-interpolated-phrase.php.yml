@@ -1,0 +1,27 @@
+id: "langsys-php-no-interpolated-phrase"
+language: Php
+severity: error
+message: "Interpolated double-quoted string as a Langsys phrase — registers a new catalog entry per value"
+note: |
+  PHP's "$name" interpolation is the direct analogue of a JS template literal
+  and fails identically — the variable is substituted before the SDK ever sees the
+  string, so each distinct value becomes its own catalog phrase.
+
+    \$client->translate("Hello, \$name!");                                      // wrong
+    \$client->translate('Hello, {name}!', null, null, null, ['name' => \$name]); // right
+
+  A double-quoted string with NO interpolation is fine and is not flagged.
+rule:
+  any:
+    - pattern: "$C->translate($ARG)"
+    - pattern: "$C->translate($ARG, $$$R)"
+    - pattern: "$C->translateContentBlock($ARG)"
+    - pattern: "$C->translateContentBlock($ARG, $$$R)"
+constraints:
+  ARG:
+    kind: argument
+    has:
+      kind: encapsed_string
+      has:
+        stopBy: end
+        kind: variable_name

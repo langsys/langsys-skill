@@ -1,0 +1,20 @@
+id: "langsys-no-object-param-value"
+language: Tsx
+severity: error
+message: "Object or array as a params value — only string | number | Date | boolean are allowed"
+note: |
+  Param values must be ParamPrimitive (string | number | Date | boolean). An
+  object or array renders as "[object Object]" — it has always been broken at
+  runtime, and base SDK 0.5.0 narrowed the type so it is now a build error too.
+
+    <Phrase params={{ user: someUserObject }}>   // wrong — renders [object Object]
+    <Phrase params={{ name: user.name }}>        // right — pass the primitive
+
+  Declare wrapper prop types as Record<string, ParamPrimitive>, never
+  Record<string, unknown>. The narrower type compiles against both 0.4.x and 0.5.0.
+rule:
+  any:
+    - pattern: "<$C params={{ $KEY: { $$$OBJ } }}>$$$CH</$C>"
+    - pattern: "<$C params={{ $KEY: [ $$$ARR ] }}>$$$CH</$C>"
+    - pattern: "<$C params={{ $KEY: { $$$OBJ } }} />"
+    - pattern: "<$C params={{ $KEY: [ $$$ARR ] }} />"

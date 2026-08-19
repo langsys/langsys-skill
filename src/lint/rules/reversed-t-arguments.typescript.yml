@@ -1,0 +1,39 @@
+id: "langsys-reversed-t-arguments"
+language: TypeScript
+severity: error
+message: Reversed t() arguments — the phrase comes first, the category second
+note: |
+  The signature is t(phrase, category?, params?). Both orders typecheck when the
+  phrase has no placeholders, so the compiler will not catch a reversal — which is
+  why this survives review.
+
+  This rule fires only where the second argument is unambiguously a PHRASE, using
+  two asymmetries between phrases and categories:
+
+    1. It contains a {…} placeholder. Categories never do; phrases often do.
+    2. It ends in terminal sentence punctuation (. ! ? …). Categories are labels
+       — "Main Menu", "Home repairs", "ProductCard" — and labels do not end in a
+       full stop. Only a TERMINAL mark counts, so a versioned label like
+       "Release 1.2 notes" is safe, and ':' is excluded because "Note:" is a
+       plausible label.
+
+    t('UI', 'Hello, {name}!')             // wrong — registers "UI" as the phrase
+    t('UI', 'Save your work.')            // wrong — same, caught by rule 2
+    t('Hello, {name}!', 'UI', { name })   // right
+    t('Save', 'UI')                       // correct but UNDETECTABLE — left alone
+
+  A reversal whose phrase is short and unpunctuated cannot be distinguished from a
+  correct call, so it is deliberately not flagged. Coverage is traded away to keep
+  false positives at zero: a rule that fires on correct code gets disabled, and
+  then catches nothing at all.
+rule:
+  any:
+    - pattern: "t($CAT, '$PHRASE')"
+    - pattern: "t($CAT, '$PHRASE', $$$REST)"
+    - pattern: "$t($CAT, '$PHRASE')"
+    - pattern: "$t($CAT, '$PHRASE', $$$REST)"
+constraints:
+  PHRASE:
+    regex: "\\{\\s*[A-Za-z_][A-Za-z0-9_]*\\s*\\}|[.!?…]$"
+  CAT:
+    kind: string

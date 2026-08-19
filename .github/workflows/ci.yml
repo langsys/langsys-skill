@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push: { branches: [main] }
+  pull_request:
+  schedule:
+    # Weekly drift check — upstream SDKs ship on their own cadence, so a claim
+    # verified today can quietly stop holding without anything here changing.
+    - cron: '0 6 * * 1'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags are required by the changelog-coverage step. The default
+          # shallow checkout fetches none, which makes that check pass
+          # without verifying anything. Do not trim this as tidiness.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Install ast-grep
+        run: npm install -g @ast-grep/cli
+
+      - name: Rule files are in sync with their generator
+        # Rules are generated from one source of truth so per-language copies
+        # cannot drift. A dirty tree here means someone hand-edited a rule.
+        run: |
+          node src/lint/generate-rules.mjs
+          git diff --exit-code src/lint/rules/ \
+            || (echo "::error::src/lint/rules is out of sync — run node src/lint/generate-rules.mjs and commit"; exit 1)
+
+      - name: Test suite
+        run: node --test test/run.mjs
+
+      - name: Lint the skill's own examples
+        # The payload's code samples must obey the rules the payload teaches.
+        run: |
+          ast-grep scan -c src/lint/sgconfig.yml src/ || true
+          node src/lint/markup-check.mjs src/skill/ || true
+
+      - name: Installer smoke test (project + global scopes)
+        run: |
+          mkdir -p /tmp/proj/.claude && printf '# Mine\n\nUser content.\n' > /tmp/proj/AGENTS.md
+          node src/bin/install.mjs --dir=/tmp/proj --host=claude,codex,gemini,cursor
+          test -f /tmp/proj/.langsys/skill/SKILL.md
+          test -f /tmp/proj/.claude/skills/langsys/SKILL.md
+          grep -q 'User content.' /tmp/proj/AGENTS.md
+          test "$(grep -c 'langsys:skill:start' /tmp/proj/AGENTS.md)" = "1"
+          node src/bin/install.mjs --dir=/tmp/proj --host=claude,codex,gemini,cursor | grep -q '0 written'
+          node src/bin/install.mjs --global --dry-run | grep -q '.codex/AGENTS.md'
+
+      - name: doctor runs from an installed payload
+        run: node /tmp/proj/.langsys/bin/doctor.mjs /tmp/proj || true
+
+      - name: scan runs from an installed payload and declares its blind spots
+        # A scan whose NOT EXAMINED section goes missing reads as complete
+        # coverage. That section is the contract, so assert it rather than
+        # trusting it to survive a refactor.
+        run: |
+          node /tmp/proj/.langsys/bin/scan.mjs /tmp/proj | tee /tmp/scan.txt
+          grep -q 'NOT EXAMINED' /tmp/scan.txt
+          grep -q 'Declared blind spots' /tmp/scan.txt
+          node /tmp/proj/.langsys/bin/scan.mjs /tmp/proj --json | node -e \
+            'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);if(!j.notExamined.declaredBlindSpots.length)process.exit(1)})'
+
+      - name: Changelog covers every released tag
+        # Recurring, not one-shot, and --strict so it FAILS rather than notes.
+        # The defect it prevents has no symptom on the day it happens: a missing
+        # entry removes the prompt to update the README, the .d.ts header, and
+        # agent-facing docs, and those defects surface months later looking like
+        # unrelated writing errors. A check run only when someone remembers is
+        # exactly wrong for a failure nobody notices.
+        run: node src/bin/changelog-coverage.mjs . --strict
+
+  drift:
+    # Separate job: this hits the npm registry, so it must not fail the unit
+    # suite when the network is unavailable.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags are required by the changelog-coverage step. The default
+          # shallow checkout fetches none, which makes that check pass
+          # without verifying anything. Do not trim this as tidiness.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Drift guard — published artifacts vs VERIFIED.md
+        run: node src/bin/drift-guard.mjs

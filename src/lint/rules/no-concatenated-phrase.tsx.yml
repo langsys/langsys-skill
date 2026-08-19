@@ -1,0 +1,16 @@
+id: "langsys-no-concatenated-phrase"
+language: Tsx
+severity: error
+message: Concatenated string as a Langsys phrase — registers a new catalog entry per value
+note: |
+  Same failure mode as a template literal: every distinct runtime value becomes
+  its own catalog phrase in shared state.
+
+    t('Hello, ' + name + '!')                   // wrong
+    t('Hello, {name}!', 'Greetings', { name })  // right
+rule:
+  any:
+    - pattern: t($A + $B)
+    - pattern: t($A + $B, $$$REST)
+    - pattern: $t($A + $B)
+    - pattern: $t($A + $B, $$$REST)

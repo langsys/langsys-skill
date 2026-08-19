@@ -1,0 +1,16 @@
+id: "langsys-php-no-concatenated-phrase"
+language: Php
+severity: error
+message: Concatenated string as a Langsys phrase — registers a new catalog entry per value
+note: |
+  In PHP this is the most common form of the mistake — more likely than
+  sprintf(), because '.' concatenation is the reflex.
+
+    \$client->translate('Hello, ' . \$name . '!');                              // wrong
+    \$client->translate('Hello, {name}!', null, null, null, ['name' => \$name]); // right
+rule:
+  any:
+    - pattern: "$C->translate($A . $B)"
+    - pattern: "$C->translate($A . $B, $$$R)"
+    - pattern: "$C->translateContentBlock($A . $B)"
+    - pattern: "$C->translateContentBlock($A . $B, $$$R)"

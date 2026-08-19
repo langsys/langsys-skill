@@ -1,0 +1,18 @@
+id: "langsys-no-init-apiurl"
+language: JavaScript
+severity: error
+message: "`apiUrl` is not a field on iLangsysInitConfig — it is silently dropped"
+note: |
+  Verified absent from langsys-js-typescript@0.4.3. TypeScript reports an excess
+  property; plain JS gets no signal at all and keeps talking to production.
+
+    LangsysApp.init({ apiUrl: '...' })            // wrong
+    LangsysAppAPI.setBaseUrl('...'); await LangsysApp.init({ ... })  // right (before init)
+rule:
+  pattern: LangsysApp.init($CONF)
+  has:
+    kind: pair
+    has:
+      field: key
+      regex: ^apiUrl$
+    stopBy: end

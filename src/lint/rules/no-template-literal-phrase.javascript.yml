@@ -1,0 +1,22 @@
+id: "langsys-no-template-literal-phrase"
+language: JavaScript
+severity: error
+message: Template literal as a Langsys phrase — registers a new catalog entry per value
+note: |
+  Each distinct interpolated value registers a SEPARATE phrase in the shared
+  Translation Manager — "Hello, Sarah!", "Hello, Ahmed!", one per user. Unbounded
+  catalog pollution, billed as translatable words, and it cannot be undone by
+  changing code. The SDK cannot detect this: once the string arrives, an
+  interpolated value is indistinguishable from an authored one.
+
+    t(`Hello, ${name}!`)                       // wrong
+    t('Hello, {name}!', 'Greetings', { name })  // right
+rule:
+  any:
+    - pattern: "t(`$$$A`)"
+    - pattern: "t(`$$$A`, $$$REST)"
+    - pattern: "$t(`$$$A`)"
+    - pattern: "$t(`$$$A`, $$$REST)"
+  has:
+    kind: template_substitution
+    stopBy: end

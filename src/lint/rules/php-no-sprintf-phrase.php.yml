@@ -1,0 +1,26 @@
+id: "langsys-php-no-sprintf-phrase"
+language: Php
+severity: error
+message: sprintf() as a Langsys phrase — registers a new catalog entry per value
+note: |
+  Every distinct value produces a SEPARATE catalog phrase — "Hello, Sarah!",
+  "Hello, Ahmed!", one per user — billed as translatable words and readable by
+  every other Langsys SDK. It cannot be undone by fixing the code afterwards.
+
+  The SDK cannot detect this at runtime: once the string arrives, an interpolated
+  value is indistinguishable from an authored one. Static detection is the only
+  defense that fires before the catalog is polluted.
+
+    \$client->translate(sprintf('Hello, %s!', \$name));                        // wrong
+    \$client->translate('Hello, {name}!', null, null, null, ['name' => \$name]); // right
+
+  Only the FIRST argument is the phrase. \$locale, \$category and \$params are
+  expected to be dynamic and are not flagged.
+rule:
+  any:
+    - pattern: "$C->translate(sprintf($$$A))"
+    - pattern: "$C->translate(sprintf($$$A), $$$R)"
+    - pattern: "$C->translate(vsprintf($$$A))"
+    - pattern: "$C->translate(vsprintf($$$A), $$$R)"
+    - pattern: "$C->translateContentBlock(sprintf($$$A))"
+    - pattern: "$C->translateContentBlock(sprintf($$$A), $$$R)"

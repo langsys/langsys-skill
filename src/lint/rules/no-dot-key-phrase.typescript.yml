@@ -1,0 +1,20 @@
+id: "langsys-no-dot-key-phrase"
+language: TypeScript
+severity: error
+message: "Dot-separated key passed to t() — Langsys uses the phrase itself as the key"
+note: |
+  This is an i18next habit. Langsys has no catalog files: the source text IS the
+  key AND the base-language default. A dot-key registers the literal string
+  "home.welcome" as a translatable phrase.
+
+    t('home.welcome')            // wrong — registers "home.welcome"
+    t('Welcome back', 'Home')    // right
+rule:
+  any:
+    - pattern: "t('$KEY')"
+    - pattern: "t('$KEY', $$$REST)"
+    - pattern: "$t('$KEY')"
+    - pattern: "$t('$KEY', $$$REST)"
+constraints:
+  KEY:
+    regex: "^[a-z][a-zA-Z0-9_]*(\\.[a-z][a-zA-Z0-9_]*)+$"
