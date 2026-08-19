@@ -23,7 +23,7 @@ const VERIFIED = {
     'langsys-js-typescript': '0.6.5',
     'langsys-js-react': '0.6.6',
     'langsys-js-svelte': '3.6.3',
-    'langsys-js-vue': '0.2.0',
+    'langsys-js-vue': '0.2.1',
 };
 
 /**

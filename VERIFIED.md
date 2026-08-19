@@ -11,7 +11,7 @@ Every load-bearing claim the skill makes, checked against the **published artifa
 | `langsys-js-typescript` | **0.6.5** | 0.4.1 | — | `intl-messageformat@^11.2.7` |
 | `langsys-js-react` | **0.6.6** | 0.4.1 | `react@^18 \|\| ^19` | `^0.6.5` |
 | `langsys-js-svelte` | **3.6.3** | 3.4.0 | `svelte@^5` | `^0.6.4` |
-| `langsys-js-vue` | **0.2.0** | 0.1.1 | `vue@^3.4` | `^0.6.5` |
+| `langsys-js-vue` | **0.2.1** | 0.1.1 | `vue@^3.4` | `^0.6.5` |
 | `langsys/langsys-php` | **1.3.1** | — | PHP ≥7.4 + ext-intl | — |
 
 All three binding carets now resolve to base **`0.6.4` or newer** (React `^0.6.5`, Vue `^0.6.5`, Svelte `^0.6.4`), verified from each published `package.json`. That closes a structural gap worth naming: the old Vue range `^0.4.1` capped at `0.4.3`, so **every base-SDK fix from `0.5.0` onward was unreachable for Vue consumers regardless of what any document claimed.** A caret is part of the API surface — a correct fix behind a stale range ships as no fix at all.
@@ -96,7 +96,7 @@ Not working-tree issues — these are shipped to users today.
 
 | C | ~~Same stale example + `params` doc comment~~ | **RESOLVED in 0.2.0** | Verified in the published tarball: `dist/index.d.ts:203` now reads `%n%` / `%name%`, and `:215` `Based on %n% <strong>reviews</strong>`, with six further lines explaining that the bare form survives in Vue only because Vue consumes `{{ }}` alone. The last open defect from the Vue audit. |
 | J | ~~Svelte README claims `Date` values serialize to ISO 8601~~ | **RESOLVED in 3.6.3** | The claim is gone from the published README. Verified by absence in the tarball — which is the weaker form of evidence, so what is recorded is "the claim is no longer made", not "the behaviour was changed". |
-| K | Vue `README.md:105` cites "the current base SDK (`0.4.3`)" while `0.2.0` depends on `^0.6.5` | **fixed pending release** (open in published `0.2.0`) | Found while verifying C. The surrounding guidance is correct; the version reference is two minors stale, so a reader checking `0.4.3` for `setBaseUrl` draws the wrong conclusion about which versions the note applies to. |
+| K | ~~Vue `README.md:105` cites "the current base SDK (`0.4.3`)"~~ | **RESOLVED in 0.2.1** | Found while verifying C. The surrounding guidance is correct; the version reference is two minors stale, so a reader checking `0.4.3` for `setBaseUrl` draws the wrong conclusion about which versions the note applies to. |
 | D | ~~Svelte declaration header omits `Phrase`/`DontTranslate`~~ | **RESOLVED in 3.5.0** | Header now lists all three and states *why* `Phrase` exists (agreement/pluralization), plus the `%name%` vs `{name}` split. This was the highest-value fix: the declaration header is what IDE hover surfaces unprompted. |
 | E | `langsys-js-react@0.4.3` `<Phrase>` example is correct (`%n%`) with rationale | React `dist/index.d.ts` | **Reference wording** — B and C are a verbatim port, not a rewrite. |
 
@@ -165,7 +165,7 @@ Checks and fixes that produce no signal because they never ran, or because their
 | 6 | `custom-id-reference.json` shipped a `custom_id` computed from an **unrecorded** category — unreproducible from outside, while reading as verified data | base-SDK agent, running their implementation against it and getting 0/17 |
 | 7 | `requires_intl` **inferred** from "does the template contain ICU syntax" — wrong in both directions (recovery cases need no intl; a plain `{id}` does), 4 of 19 wrong, and not the four anyone would guess | PHP agent, generating the fixture twice — with and without the extension — and taking the flag from the diff |
 | 8 | A translatable-attribute list written from **memory** rather than from `TRANSLATABLE_ATTRIBUTES`: invented `summary`, omitted nine real entries, and missed `value` entirely | Vue agent's report, checked against the published constant |
-| 9 | `## 0.2.0 - unreleased` shipped in the published Vue tarball. Not a bad value — a value with a **correctness window**: right when written, wrong the instant it shipped, with nothing watching the boundary | me, reading the tarball; **cause corrected by the Vue agent** — see below |
+| 9 | ~~`## 0.2.0 - unreleased` shipped in the published Vue tarball~~ (fixed in 0.2.1; `0.1.2` also documented). Not a bad value — a value with a **correctness window**: right when written, wrong the instant it shipped, with nothing watching the boundary | me, reading the tarball; **cause corrected by the Vue agent** — see below |
 
 Instance 7 generalises cleanly on its own: **when a property is expensive to reason about and cheap to observe, observe it.** The inferred flag would have shipped skip conditions that silently did not run on hosts without `intl`, while appearing to cover them.
 

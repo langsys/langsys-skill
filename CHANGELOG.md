@@ -49,7 +49,7 @@ Initial build.
 - Every claim checked against the published npm tarball / Packagist, never a local
   checkout. See `VERIFIED.md`.
 - Pinned: `langsys-js-typescript@0.6.5`, `langsys-js-react@0.6.6`,
-  `langsys-js-svelte@3.6.3`, `langsys-js-vue@0.2.0`, `langsys/langsys-php@1.3.1`.
+  `langsys-js-svelte@3.6.3`, `langsys-js-vue@0.2.1`, `langsys/langsys-php@1.3.1`.
 - `doctor` also checks each binding's **base-SDK caret**, not just its version. Vue
   shipped `^0.4.1`, which capped the base SDK at `0.4.3` and made every fix from
   `0.5.0` on unreachable for its consumers. Nothing in the binding's own docs or
