@@ -71,7 +71,17 @@ jobs:
           grep -q 'User content.' /tmp/proj/AGENTS.md
           test "$(grep -c 'langsys:skill:start' /tmp/proj/AGENTS.md)" = "1"
           node src/bin/install.mjs --dir=/tmp/proj --host=claude,codex,gemini,cursor | grep -q '0 written'
-          node src/bin/install.mjs --global --dry-run | grep -q '.codex/AGENTS.md'
+          # --host is EXPLICIT here on purpose. Without it the installer
+          # auto-detects, and a fresh runner has no ~/.claude, ~/.codex or
+          # ~/.gemini — so it detected nothing, fell back to `generic`, and the
+          # assertion failed for a reason that had nothing to do with global
+          # scope. A test whose result depends on the machine's own tooling is
+          # testing the machine.
+          node src/bin/install.mjs --global --dry-run --host=codex | grep -q '.codex/AGENTS.md'
+          # The no-host fallback must NOT drop a file in the home root.
+          node src/bin/install.mjs --global --dry-run --host=generic | tee /tmp/gen.txt
+          grep -q '.langsys/AGENTS.md' /tmp/gen.txt
+          ! grep -qE '^\s+\+ AGENTS\.md$' /tmp/gen.txt
 
       - name: doctor runs from an installed payload
         run: node /tmp/proj/.langsys/bin/doctor.mjs /tmp/proj || true

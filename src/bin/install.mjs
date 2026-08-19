@@ -181,7 +181,12 @@ const shims = {
             `---\ndescription: Langsys translation SDK integration and migration\nglobs: ["**/*.{ts,tsx,js,jsx,vue,svelte,php}"]\nalwaysApply: false\n---\n\n${CORE}\n`);
     },
     generic() {
-        writeManagedBlock(join(base, 'AGENTS.md'), CORE);
+        // Same rule as codex() and gemini(), and this is the shim most likely to
+        // hit it: `generic` is the fallback when NO host is detected, which is
+        // exactly a fresh machine running --global. Writing ~/AGENTS.md there
+        // drops a file in the user's home root — their filesystem, not a
+        // project. Global scope keeps it beside the payload instead.
+        writeManagedBlock(isGlobal ? join(base, '.langsys', 'AGENTS.md') : join(base, 'AGENTS.md'), CORE);
     },
 };
 

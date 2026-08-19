@@ -899,3 +899,35 @@ test('NEGATIVE: no section for this version is a DIFFERENT defect, not this one'
     // one defect as two.
     assert.equal(selfDescribesUnreleased('0.1.2', '## 0.2.0 - 2026-08-18\n## 0.1.1 - 2026-07-09\n'), null);
 });
+
+test('global install never writes into the home root', () => {
+    // The rule was commented on codex() and gemini() and missing from generic()
+    // — which is the shim MOST likely to hit it, because `generic` is the
+    // fallback when no host is detected, i.e. a fresh machine running --global.
+    // It wrote ~/AGENTS.md: the user's filesystem, not a project.
+    const fakeHome = mkdtempSync(join(tmpdir(), 'langsys-home-'));
+    const run = (args) => execFileSync('node', [join(root, 'src/bin/install.mjs'), ...args],
+        { encoding: 'utf8', env: { ...process.env, HOME: fakeHome }, stdio: ['ignore', 'pipe', 'pipe'] });
+
+    run(['--global', '--host=generic']);
+    assert.ok(!existsSync(join(fakeHome, 'AGENTS.md')),
+        'global install must not drop AGENTS.md in the home root');
+    assert.ok(existsSync(join(fakeHome, '.langsys', 'AGENTS.md')),
+        'the generic entry doc belongs beside the payload');
+
+    for (const [host, file] of [['codex', '.codex/AGENTS.md'], ['gemini', '.gemini/GEMINI.md']]) {
+        const out = run(['--global', '--dry-run', `--host=${host}`]);
+        assert.match(out, new RegExp(file.replace('.', '\\.')), `${host} global path`);
+    }
+    rmSync(fakeHome, { recursive: true, force: true });
+});
+
+test('project install still writes AGENTS.md at the project root', () => {
+    // The counterpart. Moving the file in PROJECT scope would be the opposite
+    // bug — that is exactly where Codex expects to find it.
+    const dir = mkdtempSync(join(tmpdir(), 'langsys-proj-'));
+    execFileSync('node', [join(root, 'src/bin/install.mjs'), `--dir=${dir}`, '--host=generic'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    assert.ok(existsSync(join(dir, 'AGENTS.md')), 'project scope keeps AGENTS.md at the project root');
+    rmSync(dir, { recursive: true, force: true });
+});
