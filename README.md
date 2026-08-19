@@ -24,6 +24,18 @@ Then just ask:
 
 It stops and tells you when it can't proceed — a project on Svelte 3 can't use a binding that needs Svelte 5, and you learn that in step 1, not after `npm install` fails.
 
+## Optional: the Langsys MCP
+
+With the [Langsys MCP](https://docs.langsys.dev/guides/mcp/) connected, the skill can create the **organization, project and API keys** for you instead of asking you to paste them.
+
+```bash
+claude mcp add --scope=user --transport http langsys https://mcp.langsys.dev/mcp
+```
+
+`--scope=user` registers it for your account rather than one project, so it's there in every project you open — which is when you actually need it, since you're usually starting a *new* integration. Auth is browser sign-in on first use; no token in a config file.
+
+Entirely optional. If you already have a project ID and key, the skill never asks for the MCP.
+
 ## Supported
 
 | SDK | Frameworks |
@@ -95,7 +107,7 @@ Every claim is checked against the **published npm tarball** at a pinned version
 ## Development
 
 ```bash
-node --test test/run.mjs           # 78 tests
+node --test test/run.mjs           # 82 tests
 node src/lint/generate-rules.mjs   # regenerate per-language rule files
 ```
 

@@ -1052,3 +1052,89 @@ test('NEGATIVE: a server-rendered SvelteKit app is not flagged as prerendered', 
     });
     assert.equal(scan(dir).profile.prerender, null);
 });
+
+test('the rendering-mode decision is routed to before any SSR track', () => {
+    // The guidance is about Langsys, not about a framework: only SSR puts
+    // CURRENT translations in crawlable HTML, so a realtime translation manager
+    // behind a prerendered site is indexed as a build-time snapshot. Living in
+    // one framework's track would leave the other three teaching the trap.
+    const core = join(root, 'src/skill/core/rendering-mode.md');
+    assert.ok(existsSync(core), 'core/rendering-mode.md must exist');
+    const txt = readFileSync(core, 'utf8');
+    assert.match(txt, /snapshot/i, 'must name the staleness, not just prefer SSR');
+    assert.match(txt, /ready gate|loader/i, 'must give apps the client-only answer');
+
+    for (const f of ['ssr/nextjs.md', 'ssr/nuxt.md', 'ssr/php.md', 'ssr/sveltekit.md']) {
+        const t = readFileSync(join(root, 'src/skill', f), 'utf8');
+        assert.match(t, /rendering-mode\.md/, `${f} must route to the decision first`);
+    }
+    assert.match(readFileSync(join(root, 'src/skill/SKILL.md'), 'utf8'), /rendering-mode\.md/);
+});
+
+test('scan explains WHY prerendering is a trap, not just that it was detected', () => {
+    // "No server at runtime" is true and useless on its own — prerendering emits
+    // translated HTML, so it passes the obvious check. The failure is that the
+    // snapshot goes stale invisibly, because every human sees the corrected page.
+    const dir = project({ svelte: '^5.0.0', '@sveltejs/kit': '^2.0.0', '@sveltejs/adapter-static': '^3.0.0' }, {
+        'src/routes/+layout.ts': 'export const prerender = true;\n',
+    });
+    const out = execFileSync('node', [join(root, 'src/bin/scan.mjs'), dir],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    assert.match(out, /snapshot/i);
+    assert.match(out, /nobody reports it/i);
+    assert.match(out, /rendering-mode\.md/);
+});
+
+// ── Langsys MCP awareness ────────────────────────────────────────────────────
+
+test('the MCP doc states what it unlocks and stays optional', () => {
+    // The MCP changes what the skill can DO — create the org, project and keys —
+    // so it has to be routed to from preflight. But it must never become a
+    // prerequisite: someone who already has a project ID and key needs none of it,
+    // and stalling an integration on an optional convenience is worse than the
+    // copy-paste it removes.
+    const doc = join(root, 'src/skill/core/mcp.md');
+    assert.ok(existsSync(doc), 'core/mcp.md must exist');
+    const txt = readFileSync(doc, 'utf8');
+    assert.match(txt, /--scope=user/, 'must recommend user scope');
+    assert.match(txt, /mcp\.langsys\.dev\/mcp/, 'must carry the endpoint');
+    assert.match(txt, /two API keys|two keys/i, 'must require a write key AND a read-only key');
+    assert.match(txt, /Do not stall/i, 'must state that it is optional');
+
+    const skill = readFileSync(join(root, 'src/skill/SKILL.md'), 'utf8');
+    assert.match(skill, /core\/mcp\.md/, 'preflight must route to it');
+    assert.match(skill, /--scope=user/, 'the add command must be in the router');
+});
+
+test('doctor reports MCP scope from config, distinguishing user from project', () => {
+    // Read from config, not `claude mcp list` — that health-checks every server
+    // over the network and took 7.3s here. A preflight check costing seven
+    // seconds gets skipped, and a skipped check is not a check.
+    //
+    // Scope is reported rather than a boolean because "registered for THIS
+    // project only" is the case worth flagging: the next project silently lacks it.
+    const mk = (claudeJson) => {
+        const home = mkdtempSync(join(tmpdir(), 'langsys-mcp-'));
+        const proj = join(home, 'proj');
+        mkdirSync(proj, { recursive: true });
+        writeFileSync(join(proj, 'package.json'), JSON.stringify({ name: 'p', dependencies: {} }));
+        if (claudeJson) writeFileSync(join(home, '.claude.json'), JSON.stringify(claudeJson(proj)));
+        let out = '';
+        try {
+            out = execFileSync('node', [join(root, 'src/bin/doctor.mjs'), proj],
+                { encoding: 'utf8', env: { ...process.env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (e) { out = (e.stdout ?? '') + (e.stderr ?? ''); }
+        rmSync(home, { recursive: true, force: true });
+        return out;
+    };
+
+    assert.match(mk(() => ({ mcpServers: { langsys: { type: 'http' } } })),
+        /registered at user scope/, 'user scope');
+
+    assert.match(mk((proj) => ({ projects: { [proj]: { mcpServers: { langsys: { type: 'http' } } } } })),
+        /THIS project only/, 'project scope must be called out, not treated as fine');
+
+    const absent = mk(() => ({ mcpServers: {} }));
+    assert.match(absent, /claude mcp add --scope=user/, 'absent must give the command');
+    assert.match(absent, /read-only/, 'and must say two keys, not one');
+});

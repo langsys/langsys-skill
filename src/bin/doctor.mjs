@@ -13,6 +13,7 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
+import { homedir } from 'node:os';
 
 const root = resolve(process.argv[2] ?? process.cwd());
 
@@ -232,8 +233,48 @@ const prefix = prefixes?.[0] ?? '';
 const envFiles = ['.env', '.env.local', '.env.development', '.env.production']
     .filter((f) => existsSync(join(root, f)));
 
+/**
+ * Where the Langsys MCP is registered: 'user' | 'project' | 'absent' | 'unknown'.
+ *
+ * Read from config rather than `claude mcp list`, which health-checks every
+ * server over the network and took 7s on the machine this was written on. A
+ * preflight check that costs seven seconds gets skipped, and a check that gets
+ * skipped is not a check.
+ *
+ * The scope matters, so this does not return a boolean: registered for THIS
+ * project only is the case worth telling someone about, since the next project
+ * they open will silently not have it.
+ */
+function mcpStatus() {
+    const cfg = readJson(join(homedir(), '.claude.json'));
+    if (!cfg) {
+        // Project-scoped, committed form. Absence of ~/.claude.json only means
+        // Claude Code is not the host — say nothing rather than guess.
+        return readJson(join(root, '.mcp.json'))?.mcpServers?.langsys ? 'project' : 'unknown';
+    }
+    if (cfg.mcpServers?.langsys) return 'user';
+    const perProject = cfg.projects ?? {};
+    if (perProject[root]?.mcpServers?.langsys) return 'project';
+    if (readJson(join(root, '.mcp.json'))?.mcpServers?.langsys) return 'project';
+    return 'absent';
+}
+
 if (envFiles.length === 0 && !composer) {
+    const mcp = mcpStatus();
     warn('No .env file found', 'Langsys needs a project ID and API key');
+    if (mcp === 'user') {
+        info('Langsys MCP registered at user scope — the project and keys can be created for you',
+             'Ask the agent to set up the project rather than creating it by hand.');
+    } else if (mcp === 'project') {
+        info('Langsys MCP registered for THIS project only',
+             'It will not be there in the next project you open. Re-add with --scope=user to get it everywhere: ' +
+             'claude mcp add --scope=user --transport http langsys https://mcp.langsys.dev/mcp');
+    } else if (mcp === 'absent') {
+        info('Langsys MCP is not registered',
+             'claude mcp add --scope=user --transport http langsys https://mcp.langsys.dev/mcp ' +
+             '— lets the agent create the org, project and BOTH keys (write for dev, read-only for prod). ' +
+             'Optional: paste an existing project ID and key instead.');
+    }
 } else {
     const merged = envFiles.map((f) => readText(join(root, f)) ?? '').join('\n');
     const keys = [...merged.matchAll(/^\s*([A-Z0-9_]*LANGSYS[A-Z0-9_]*)\s*=(.*)$/gim)]

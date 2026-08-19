@@ -4,6 +4,11 @@ PHP renders on the server by definition, so there is no hydration problem to sol
 
 Read [integrate/php.md](../integrate/php.md) first.
 
+> **Decide the rendering mode first: [core/rendering-mode.md](../core/rendering-mode.md).**
+> Public site → SSR, because only SSR puts *current* translations in the HTML a crawler
+> fetches; a prerendered page serves a build-time snapshot that humans never see as stale.
+> App behind a login → client-only with a ready gate, and skip this track entirely.
+
 ## The shape
 
 ```php

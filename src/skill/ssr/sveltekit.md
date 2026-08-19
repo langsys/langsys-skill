@@ -2,32 +2,36 @@
 
 Read [integrate/svelte.md](../integrate/svelte.md) first. This adds the server half.
 
-## 0. First: is there a server at runtime?
+## 0. First: is this public, and is there a server at runtime?
 
-**Everything below assumes a request reaches your app.** If the site is fully prerendered there is no request and no server, and the seeding recipe in this track cannot run as written.
+**Read [core/rendering-mode.md](../core/rendering-mode.md) before this track.** It carries the decision; this section is only the SvelteKit-specific detection and shapes.
+
+Short version: **public site → SSR**, because only SSR puts *current* translations in the HTML a crawler fetches. **App behind a login → client-only with a ready gate**, and skip this track entirely.
 
 ```bash
 grep -rn "export const prerender" src/routes | head
-grep -E "adapter-static" package.json
+grep -E "adapter-static|adapter-node|adapter-cloudflare|adapter-auto" package.json
 ```
 
-`prerender = true` in the root `+layout.ts`, or `@sveltejs/adapter-static`, means **static output**. `scan` reports this as `PRERENDERED / STATIC`.
+`prerender = true` in the root `+layout.ts`, or `@sveltejs/adapter-static`, means **static output** — no server at runtime, so everything below this section cannot run as written. `scan` reports this as `PRERENDERED / STATIC`.
 
-### What breaks, and what it costs
+### If the site is public and currently static
 
-`+layout.server.ts` runs at **build** time, once, with no `Accept-Language` header. So per-request locale detection has nothing to detect, and every prerendered page is generated in exactly one locale.
+Prerendering emits translated HTML, so it passes the obvious check — but what it emits is a **build-time snapshot**. The client corrects the page after hydration, so humans see current text while the crawler indexed the old copy. A fixed mistranslation stays in search results until the next build, and nobody reports it because everyone who looks sees the corrected page.
 
-Client-only Langsys still works — the page loads, the SDK fetches, the text swaps. But the HTML served to a crawler contains only the base language. **For a marketing or docs site that means the translated pages do not rank**, which is usually the entire reason for translating them.
+Prefer a runtime adapter:
 
-That is a product decision, not a technical one. Three honest options:
+```js
+// svelte.config.js
+import adapter from '@sveltejs/adapter-node';        // or -cloudflare, -vercel, -netlify
+export default { kit: { adapter: adapter() } };
+```
 
-| Option | Translated HTML | Cost |
-|---|---|---|
-| **A. Client-only, accept it** | no | Zero work. Correct for an app behind a login, where crawlers are irrelevant. |
-| **B. Prerender one route tree per locale** | yes | `/[lang]/…` with `entries()` returning every locale. Each build fetches the catalog and emits static HTML per language. More build time, more output, real URLs per locale — which is what SEO wants anyway. |
-| **C. Move to a runtime adapter** | yes | `adapter-node`/`adapter-cloudflare` and follow this track as written. Gives per-request detection back, at the cost of running a server. |
+and drop `export const prerender = true` from the root layout. Then follow this track as written — per-request locale detection and seeding come back, and translations are current on every render.
 
-**B is usually right for a static marketing site**, because a locale in the URL is what makes translated pages indexable and shareable in the first place — `Accept-Language` negotiation produces one URL that renders differently per visitor, which crawlers handle badly regardless of rendering model.
+### If static is a hard constraint
+
+Prerender **per locale**, which is much better than client-only and keeps this track's seeding mechanism unchanged — only *when* it runs and *where the locale comes from* differ:
 
 ```ts
 // src/routes/[lang]/+layout.ts
@@ -35,15 +39,14 @@ export const prerender = true;
 export const entries = () => [{ lang: 'en' }, { lang: 'es' }, { lang: 'fr' }];
 
 export async function load({ params }) {
-    // Runs at BUILD time, once per locale. Seed from here, not from a request.
+    // BUILD time, once per locale — not per request.
     return { locale: params.lang };
 }
 ```
 
-Then pass `initialTranslations` and `initialTranslationsLocale` from that build-time load, exactly as §2 below describes — the seeding mechanism is unchanged, only *when* it runs and *where the locale comes from*.
+Pass `initialTranslations` and `initialTranslationsLocale` from that load exactly as §2 describes. Then schedule rebuilds against translation updates, and tell whoever owns the site that indexed content is only as fresh as the last build.
 
-Read on for the request-based version.
-
+A locale in the URL is worth having regardless: `Accept-Language` negotiation produces one URL that renders differently per visitor, which crawlers handle badly under any rendering model.
 
 ## The problem
 

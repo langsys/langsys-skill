@@ -52,6 +52,23 @@ never been touched by Langsys. Every item below is something the trial hit.
   it costs (translated pages do not appear in the HTML, so they do not rank), and
   the three real options.
 
+### Added
+- **`core/rendering-mode.md`** — the decision that belongs before any SSR track,
+  and it is about Langsys rather than about a framework. Only SSR puts *current*
+  translations in the HTML a crawler fetches. Prerendering emits translated HTML
+  too, so it passes the obvious check — but it is a build-time snapshot, and the
+  client corrects the page after hydration, so humans see current text while the
+  crawler indexed the old copy. A fixed mistranslation stays in search results
+  until the next build and nobody reports it. Public site → SSR; app behind a
+  login → client-only with a ready gate, which loses nothing. All four SSR tracks
+  and `scan` now route to this first.
+- **`core/mcp.md`** — the Langsys MCP server. Connected, the skill can create the
+  organization, project and both API keys instead of asking for a paste.
+  `doctor` reports whether it is registered and at which scope, reading config
+  rather than `claude mcp list` (which health-checks over the network and took
+  7.3s — a preflight check that slow gets skipped). Registered for one project
+  only is called out, because the next project silently will not have it.
+
 ### Changed
 - **README rewritten.** It led with the tool's own file layout and justified
   itself in terms of correcting an agent's wrong beliefs, before ever showing

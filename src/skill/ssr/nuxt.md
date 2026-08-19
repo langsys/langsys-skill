@@ -2,6 +2,11 @@
 
 Read [integrate/vue.md](../integrate/vue.md) first. This adds the server half.
 
+> **Decide the rendering mode first: [core/rendering-mode.md](../core/rendering-mode.md).**
+> Public site → SSR, because only SSR puts *current* translations in the HTML a crawler
+> fetches; a prerendered page serves a build-time snapshot that humans never see as stale.
+> App behind a login → client-only with a ready gate, and skip this track entirely.
+
 ## 1. Runtime config
 
 ```ts

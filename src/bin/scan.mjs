@@ -963,9 +963,15 @@ if (profile.prerender) {
     console.log(`\n  ! PRERENDERED / STATIC${pr.staticAdapter ? ` (${pr.staticAdapter})` : ''}${pr.prerenderAll === true ? ', prerender = true at the route root' : ''}`);
     console.log(`    There is no server at runtime, so the SSR track's per-request seeding`);
     console.log(`    (reading Accept-Language in +layout.server.ts) CANNOT run here.`);
-    console.log(`    Client-only Langsys works, but translated text never reaches the HTML —`);
-    console.log(`    which on a marketing site means those locales do not rank.`);
-    console.log(`    See the prerendered section of the SSR track before following it.`);
+    console.log(`    Prerendering DOES emit translated HTML — but a build-time snapshot. The`);
+    console.log(`    client corrects the page after hydration, so humans see current text`);
+    console.log(`    while the crawler indexed the old copy. A fixed mistranslation stays in`);
+    console.log(`    search results until the next build, and nobody reports it.`);
+    console.log(``);
+    console.log(`    Public site? Prefer a runtime adapter — only SSR puts CURRENT`);
+    console.log(`    translations in crawlable HTML, which is the whole point of a realtime`);
+    console.log(`    translation manager. App behind a login? Client-only with a ready gate`);
+    console.log(`    is simpler and loses nothing. See core/rendering-mode.md.`);
 }
 
 if (profile.blocker) {
