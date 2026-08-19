@@ -152,17 +152,45 @@ if (base) {
 // ── Peer dependency floors ───────────────────────────────────────────────────
 
 const peerFloor = { react: '18.0.0', vue: '3.4.0', svelte: '5.0.0' };
+const floorWhy = {
+    react: 'langsys-js-react needs useSyncExternalStore (React 18+)',
+    svelte: 'langsys-js-svelte@3 requires Svelte 5',
+    vue: 'langsys-js-vue requires Vue 3.4+',
+};
+
+// The DECLARED range is checked, not only the installed version.
+//
+// This check used to read node_modules and `continue` when the package was not
+// installed — so on a fresh clone, or on any project being scoped BEFORE an
+// install, it silently did nothing and the run reported zero errors. That is the
+// exact moment the answer matters most: a project on Svelte 3 cannot use this
+// binding at all, and the range saying so was sitting in package.json the whole
+// time. A check that no-ops on the common case is worse than no check, because
+// its silence reads as a pass.
 for (const [name, floor] of Object.entries(peerFloor)) {
     if (!has(name)) continue;
     const installed = readJson(join(root, 'node_modules', name, 'package.json'));
-    if (!installed) continue;
-    if (cmpVersion(installed.version, floor) < 0) {
-        err(`${name}@${installed.version} is below the required ${floor}`,
-            name === 'react' ? 'langsys-js-react needs useSyncExternalStore (React 18+)'
-            : name === 'svelte' ? 'langsys-js-svelte@3 requires Svelte 5'
-            : 'langsys-js-vue requires Vue 3.4+');
+
+    if (installed) {
+        if (cmpVersion(installed.version, floor) < 0) {
+            err(`${name}@${installed.version} is below the required ${floor}`, floorWhy[name]);
+        } else {
+            ok(`${name}@${installed.version} meets the ${floor} floor`);
+        }
+        continue;
+    }
+
+    // Not installed — fall back to the declared range. `^3.55.0` cannot ever
+    // resolve to 5.x, so this is decidable without a registry lookup.
+    const range = deps[name];
+    const lower = String(range).replace(/^[^\d]*/, '');
+    if (/^\d/.test(lower) && cmpVersion(lower, floor) < 0 && /^[~^]?\d/.test(String(range))) {
+        err(`${name} is declared as ${range}, which cannot satisfy the required ${floor}`,
+            `${floorWhy[name]} Nothing is installed here, so this comes from package.json — ` +
+            `installing will not fix it. The framework itself has to be upgraded first.`);
     } else {
-        ok(`${name}@${installed.version} meets the ${floor} floor`);
+        warn(`${name} ${range} declared but not installed — floor ${floor} not verified`,
+             'Run npm install, then re-run doctor to check the resolved version.');
     }
 }
 

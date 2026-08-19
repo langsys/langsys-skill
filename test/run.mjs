@@ -931,3 +931,63 @@ test('project install still writes AGENTS.md at the project root', () => {
     assert.ok(existsSync(join(dir, 'AGENTS.md')), 'project scope keeps AGENTS.md at the project root');
     rmSync(dir, { recursive: true, force: true });
 });
+
+test('scan blocks a recommendation the project cannot install', () => {
+    // Found by dogfooding on a real Svelte 3 project. scan runs BEFORE doctor and
+    // is what produces the recommendation, so it recommended langsys-js-svelte to
+    // a project that cannot install it — sending an agent to `npm install` and a
+    // failure, with the profile reading as a clean route the whole way.
+    const dir = project({ svelte: '^3.55.0' }, {
+        'src/A.svelte': '<h1>Dashboard</h1>\n',
+    });
+    const j = scan(dir);
+    assert.ok(j.profile.blocker, 'a Svelte 3 project must be flagged');
+    assert.equal(j.profile.blocker.framework, 'svelte');
+    assert.equal(j.profile.blocker.floor, '5.0.0');
+    assert.equal(j.totals.sites, 1, 'scope is still reported — it just is not actionable yet');
+});
+
+test('NEGATIVE: a project meeting the floor is not blocked', () => {
+    const dir = project({ svelte: '^5.0.0', vite: '^5.0.0' }, { 'src/A.svelte': '<h1>Dashboard</h1>\n' });
+    assert.equal(scan(dir).profile.blocker, null);
+});
+
+test('scan does not claim "none required" for a bundler with no env convention', () => {
+    // Rollup and webpack inject nothing. Reporting "none required" reads as
+    // "process.env just works", and process.env does not exist in a browser
+    // bundle — the key silently resolves to undefined with no build error.
+    const dir = project({ svelte: '^5.0.0', rollup: '^3.15.0' }, { 'src/A.svelte': '<h1>Hi there</h1>\n' });
+    const out = execFileSync('node', [join(root, 'src/bin/scan.mjs'), dir],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    assert.match(out, /rollup \(no convention\)/);
+    assert.match(out, /process\.env does NOT exist/);
+    assert.doesNotMatch(out, /none required/);
+});
+
+test('doctor checks the DECLARED framework range, not only the installed one', () => {
+    // The check used to read node_modules and skip when absent — so on a fresh
+    // clone, or any project scoped before install, it silently did nothing and
+    // reported zero errors. That is exactly when the answer matters most.
+    const dir = mkdtempSync(join(tmpdir(), 'langsys-floor-'));
+    writeFileSync(join(dir, 'package.json'),
+        JSON.stringify({ name: 'f', dependencies: { svelte: '^3.55.0' } }));
+    let out = '';
+    try {
+        out = execFileSync('node', [join(root, 'src/bin/doctor.mjs'), dir],
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) { out = (e.stdout ?? '') + (e.stderr ?? ''); }
+    assert.match(out, /declared as \^3\.55\.0, which cannot satisfy the required 5\.0\.0/);
+    assert.match(out, /installing will not fix it/i);
+    rmSync(dir, { recursive: true, force: true });
+});
+
+test('installer accepts -g and -n as well as the long flags', () => {
+    // The README used `-g`, which the parser did not handle. Documenting a flag
+    // that does nothing is the same class of defect this repo audits others for.
+    const fakeHome = mkdtempSync(join(tmpdir(), 'langsys-short-'));
+    const out = execFileSync('node', [join(root, 'src/bin/install.mjs'), '-g', '-n', '--host=generic'],
+        { encoding: 'utf8', env: { ...process.env, HOME: fakeHome }, stdio: ['ignore', 'pipe', 'pipe'] });
+    assert.match(out, /global install \(dry run\)/);
+    assert.ok(!existsSync(join(fakeHome, '.langsys')), '-n must not write');
+    rmSync(fakeHome, { recursive: true, force: true });
+});

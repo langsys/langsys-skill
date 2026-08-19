@@ -1,56 +1,68 @@
 # langsys-skill
 
-A portable agent skill for integrating the [Langsys](https://langsys.dev) translation SDKs into any project — and for migrating projects off i18next, react-intl, or vue-i18n.
+**Point your coding agent at a project and it adds Langsys translations correctly** — the right SDK for the framework, wired up, with every user-visible string converted using the right primitive.
 
 Works in **Claude Code**, **Codex CLI**, **Gemini CLI**, and **Cursor**.
 
-## Install
-
 ```bash
-npx langsys-skill install            # this project, auto-detects hosts
-npx langsys-skill install --global   # every project on this machine
+npx langsys-skill install       # this project
+npx langsys-skill install -g    # every project on this machine
 ```
 
-Options: `--host=claude,codex,gemini,cursor` · `--dir=<path>` · `--dry-run`
+Then just ask:
 
-Re-run to upgrade. Shared files (`AGENTS.md`, `GEMINI.md`) are edited only between managed markers, so your own content is never touched — and an unchanged re-install writes nothing.
+> *"Add Langsys translations to this app"*
 
-## What it installs
+## What happens
+
+| | |
+|---|---|
+| **1. Scope** | `langsys-scan` reads the project: framework, bundler, existing i18n library, base locale — and counts every string to convert, split by how hard each one is. |
+| **2. Route** | Picks the matching SDK and the right guide. React app on Next.js? `langsys-js-react` plus the App Router seeding rules. Already on i18next? The migration track instead. |
+| **3. Convert** | Wires `init()` once, then converts strings — choosing `t()`, `<Phrase>` or `<Translate>` per site, which is the decision that determines whether translations actually work. |
+| **4. Verify** | `langsys-doctor` checks the environment and versions; the linters catch the mistakes that compile fine and break only in other languages. |
+
+It stops and tells you when it can't proceed — a project on Svelte 3 can't use a binding that needs Svelte 5, and you learn that in step 1, not after `npm install` fails.
+
+## Supported
+
+| SDK | Frameworks |
+|---|---|
+| `langsys-js-react` | React 18+, Next.js (App + Pages Router), Remix, Vite |
+| `langsys-js-vue` | Vue 3.4+, Nuxt, Vite |
+| `langsys-js-svelte` | Svelte 5, SvelteKit |
+| `langsys-js-typescript` | Vanilla TS/JS, Node, custom bindings |
+| `langsys/langsys-php` | PHP 7.4+, server-rendered pages |
+
+Migrating? Dedicated tracks for **i18next / react-i18next**, **react-intl / FormatJS**, and **vue-i18n**.
+
+## What it gets right
+
+Langsys works differently from i18next, and the differences fail *silently* — your base language keeps rendering perfectly while other locales break. These are the four that cost the most:
+
+**The phrase is the key.** No `locales/en.json`, no dot-keys. `t('home.welcome')` registers the literal string `"home.welcome"` as something to translate.
+
+**Never build a phrase string.** `` t(`Hello, ${name}!`) `` registers a new catalog entry for every user who loads the page — permanent pollution of shared project state that the SDK cannot detect at runtime.
+
+**`%name%` in markup, `{name}` in `t()` strings.** Framework compilers substitute `{name}` before the SDK ever sees the text, so the phrase gets captured with one specific user's data baked in.
+
+**Pick the right primitive.** `<Translate>` splits a block into per-node phrases; `<Phrase>` keeps one markup-bearing sentence whole. Get it wrong and a count lands in a different phrase from the noun it inflects — which breaks pluralization in Russian, Arabic and Polish while looking perfect in English.
+
+## Installed layout
 
 ```
 .langsys/
-  skill/      canonical markdown payload — one source of truth
+  skill/      the guides, one canonical copy
   lint/       ast-grep rules + the markup checker
   bin/        scan, doctor, installer, drift guard
   VERIFIED.md every SDK claim, with the evidence
 ```
 
-Then per host: `.claude/skills/langsys/SKILL.md` · `AGENTS.md` + `.codex/prompts/langsys.md` · `GEMINI.md` + `.gemini/commands/langsys.toml` · `.cursor/rules/langsys.mdc`
+Per host: `.claude/skills/langsys/SKILL.md` · `AGENTS.md` + `.codex/prompts/langsys.md` · `GEMINI.md` + `.gemini/commands/langsys.toml` · `.cursor/rules/langsys.mdc`
 
-Claude Code gets progressive disclosure into the payload. The others have no equivalent, so their entry docs inline the rules that must not be missed.
+Claude Code gets progressive disclosure into the guides; the others inline the rules that must not be missed. Re-run to upgrade — shared files are edited only between managed markers, so your own content is never touched, and an unchanged re-install writes nothing.
 
-## Covers
-
-| SDK | Frameworks |
-|---|---|
-| `langsys-js-react` | React, Next.js (App + Pages Router), Remix, Vite |
-| `langsys-js-vue` | Vue 3, Nuxt, Vite |
-| `langsys-js-svelte` | Svelte 5, SvelteKit |
-| `langsys-js-typescript` | Vanilla TS/JS, Node, custom bindings |
-| `langsys/langsys-php` | PHP 7.4+, server-rendered pages |
-
-Migration tracks: **i18next / react-i18next**, **react-intl / FormatJS**, **vue-i18n**.
-
-## Why this exists
-
-An agent asked to "add translations" arrives with i18next priors. In Langsys most of them are wrong, and the resulting bugs are **invisible in the base language** — they surface only when someone switches locale, or when a translator asks why the catalog has four hundred greetings.
-
-The skill exists to overwrite those priors and then verify it worked:
-
-- **The phrase is the key.** No catalog files, no dot-keys.
-- **Never build a phrase string.** `` t(`Hello, ${name}!`) `` registers a new catalog entry per user — permanent pollution of shared state that the SDK cannot detect.
-- **`%name%` in markup, `{name}` in `t()` strings.** Framework compilers eat `{name}` in markup before the SDK sees it.
-- **Pick the right primitive.** `<Translate>` splits a block into parts; `<Phrase>` keeps one markup-bearing sentence whole. Getting this wrong separates a count from the noun it inflects, which breaks pluralization in Russian, Arabic, and Polish.
+Options: `--host=claude,codex,gemini,cursor` · `--dir=<path>` · `--dry-run`
 
 ## Tools
 
@@ -83,7 +95,7 @@ Every claim is checked against the **published npm tarball** at a pinned version
 ## Development
 
 ```bash
-node --test test/run.mjs           # 69 tests
+node --test test/run.mjs           # 74 tests
 node src/lint/generate-rules.mjs   # regenerate per-language rule files
 ```
 

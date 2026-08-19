@@ -1,10 +1,14 @@
 # Svelte integration
 
-`langsys-js-svelte@3.4.1` · requires **Svelte 5**.
+Verified against `langsys-js-svelte@3.6.3`.
+
+> ## Check this first
+>
+> **This binding requires Svelte 5.** A project on Svelte 3 or 4 cannot use it, and no amount of installing will change that — the framework has to be upgraded first. `scan` reports this as a BLOCKER and `doctor` as an error, both from the declared range in `package.json`, so you do not need `node_modules` present to find out.
 
 Covers Svelte and SvelteKit. Server-rendering? Also read [ssr/sveltekit.md](../ssr/sveltekit.md).
 
-> **This binding exports `<Phrase>` and `<DontTranslate>`** alongside `<Translate>` — full parity with React and Vue. Published READMEs at 3.4.1 barely mention them; they exist and you should use them.
+**This binding exports `<Phrase>` and `<DontTranslate>`** alongside `<Translate>` — full parity with React and Vue. The declaration header has listed all three since 3.5.0, with the rationale for `<Phrase>`; below that version the README barely mentioned them, which is why older guidance often omits them.
 
 ## 1. Install
 
@@ -14,7 +18,15 @@ npm install langsys-js-svelte
 
 ## 2. Environment
 
-SvelteKit client code needs the `PUBLIC_` prefix; a plain Vite app uses `VITE_`.
+The prefix comes from the **bundler**, not from Svelte:
+
+| Build tool | Prefix | Read with |
+|---|---|---|
+| SvelteKit | `PUBLIC_` | `$env/static/public` |
+| SvelteKit | `VITE_` | `import.meta.env` — also valid, SvelteKit runs on Vite |
+| Vite (plain Svelte) | `VITE_` | `import.meta.env` |
+| **Rollup** | **none** | nothing is injected — see below |
+| **webpack** | **none** | nothing is injected — see below |
 
 ```bash
 # .env
@@ -22,7 +34,30 @@ PUBLIC_LANGSYS_PROJECT_ID=...
 PUBLIC_LANGSYS_API_KEY=...      # write key in dev, read-only in prod
 ```
 
+**Rollup and webpack have no convention.** `process.env` does not exist in a browser bundle, so an unprefixed variable is not "server-only" there — it is `undefined`, with no build error. Wire it up explicitly:
+
+```js
+// rollup.config.js
+import replace from '@rollup/plugin-replace';
+import 'dotenv/config';
+
+plugins: [
+    replace({
+        preventAssignment: true,
+        'process.env.LANGSYS_PROJECT_ID': JSON.stringify(process.env.LANGSYS_PROJECT_ID),
+        'process.env.LANGSYS_API_KEY': JSON.stringify(process.env.LANGSYS_API_KEY),
+    }),
+    // …
+]
+```
+
+webpack: `DefinePlugin` or `EnvironmentPlugin`, same idea.
+
 ## 3. Initialize
+
+Two shapes, depending on whether you have SvelteKit. **§3a is SvelteKit; §3b is plain Svelte** (Vite or Rollup) — the difference is where init lives and how the env is read, not what init does.
+
+### 3a. SvelteKit
 
 `UserLocaleStore` here is a **standard Svelte `Writable<string>`** — not a `Signal`. This differs from React and Vue.
 
@@ -63,6 +98,48 @@ PUBLIC_LANGSYS_API_KEY=...      # write key in dev, read-only in prod
     {@render children()}
 {/if}
 ```
+
+### 3b. Plain Svelte (Vite or Rollup)
+
+No `$env/static/public` and no `+layout.svelte` — init goes in your root component, and the env comes from whatever the bundler injected (§2).
+
+```svelte
+<!-- src/App.svelte -->
+<script lang="ts">
+    import { writable } from 'svelte/store';
+    import { onMount } from 'svelte';
+    import { LangsysApp, type iLangsysInitConfig } from 'langsys-js-svelte';
+
+    const userLocale = writable('en-US');
+    let appReady = $state(false);
+    let appInitError = $state<string | null>(null);
+
+    onMount(async () => {
+        const res = await LangsysApp.init({
+            // Vite:   import.meta.env.VITE_LANGSYS_PROJECT_ID
+            // Rollup: process.env.LANGSYS_PROJECT_ID, once @rollup/plugin-replace
+            //         substitutes it — see §2. Without that it is undefined.
+            projectid: import.meta.env.VITE_LANGSYS_PROJECT_ID,
+            key: import.meta.env.VITE_LANGSYS_API_KEY,
+            UserLocaleStore: userLocale,
+            baseLocale: 'en-US',
+            debug: import.meta.env.DEV,
+        } satisfies iLangsysInitConfig);
+        if (res.status) appReady = true;
+        else appInitError = res.errors?.join(', ') ?? 'Init failed';
+    });
+</script>
+
+{#if appInitError}
+    <p>Langsys init failed: {appInitError}</p>
+{:else if !appReady}
+    <p>Loading…</p>
+{:else}
+    <Header /> <main>…</main> <Footer />
+{/if}
+```
+
+`ssrTokenStrategy` is omitted here — there is no server render to reconcile with.
 
 ## 4. Translate strings — `$t`
 

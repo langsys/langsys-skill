@@ -559,7 +559,17 @@ const prefixes =
     : has('nuxt') ? ['NUXT_PUBLIC_']
     : has('react-scripts') ? ['REACT_APP_']
     : (has('vite') || existsSync(join(projectRoot, 'vite.config.ts')) || existsSync(join(projectRoot, 'vite.config.js'))) ? ['VITE_']
+    : (has('rollup') || existsSync(join(projectRoot, 'rollup.config.js')) || existsSync(join(projectRoot, 'rollup.config.mjs'))) ? ['ROLLUP']
+    : (has('webpack') || existsSync(join(projectRoot, 'webpack.config.js'))) ? ['WEBPACK']
     : pkg ? [] : null;
+
+// Rollup and webpack have NO env-var convention — nothing is injected unless you
+// wire it up. Reporting "none required" there is actively wrong: it reads as
+// "process.env just works", and in a browser bundle process.env does not exist.
+const BUNDLER_NOTE = {
+    ROLLUP: 'Rollup has no env convention — nothing is exposed to the browser unless you add @rollup/plugin-replace (or dotenv + replace). process.env does NOT exist in the bundle.',
+    WEBPACK: 'webpack has no env convention — use DefinePlugin or EnvironmentPlugin. process.env is not available in the browser unless you define it.',
+};
 
 const INCUMBENTS = [
     { dep: 'i18next', name: 'i18next', track: 'migrate/i18next.md' },
@@ -579,6 +589,29 @@ for (const d of Object.keys(deps)) {
 }
 if (phpDeps['laravel/framework'] || existsSync(join(projectRoot, 'resources/lang')) || existsSync(join(projectRoot, 'lang'))) {
     incumbents.push({ dep: 'laravel', name: 'Laravel translation files', track: 'migrate/_method.md' });
+}
+
+/**
+ * Minimum framework version each binding needs. scan runs BEFORE doctor and is
+ * what produces the recommendation, so it has to know this too — recommending a
+ * package the project cannot install sends an agent to `npm install` and a
+ * failure, with the profile still reading as a clean route.
+ */
+const FRAMEWORK_FLOOR = { react: '18.0.0', vue: '3.4.0', svelte: '5.0.0' };
+
+function frameworkBlocker() {
+    if (!framework || !(framework in FRAMEWORK_FLOOR)) return null;
+    const declared = deps[framework];
+    if (!declared) return null;
+    const lower = String(declared).replace(/^[^\d]*/, '');
+    if (!/^\d/.test(lower) || !/^[~^]?\d/.test(String(declared))) return null;
+    const floor = FRAMEWORK_FLOOR[framework];
+    const pa = lower.split('.').map(Number), pb = floor.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+        const x = pa[i] ?? 0, y = pb[i] ?? 0;
+        if (x !== y) return x < y ? { framework, declared, floor } : null;
+    }
+    return null;
 }
 
 const LANGSYS_PKGS = ['langsys-js-typescript', 'langsys-js-react', 'langsys-js-vue', 'langsys-js-svelte'];
@@ -782,6 +815,7 @@ const profile = {
     catalogs,
     tracks,
     route: incumbents.length ? 'migrate' : 'integrate',
+    blocker: frameworkBlocker(),
 };
 
 // ── Report ───────────────────────────────────────────────────────────────────
@@ -827,7 +861,17 @@ H('PROFILE');
 const row = (k, v) => console.log(`  ${pad(k + ':', 20)}${v}`);
 row('Framework', framework ? framework : composer ? 'PHP' : 'unknown');
 row('Meta-framework', metaFramework?.name ?? 'none — client-only');
-row('Env prefix', prefixes === null ? 'n/a (no package.json)' : prefixes.length ? prefixes.join(' or ') : 'none required');
+const prefixLabel = prefixes === null ? 'n/a (no package.json)'
+    : !prefixes.length ? 'none detected — see note below'
+    : BUNDLER_NOTE[prefixes[0]] ? `${prefixes[0].toLowerCase()} (no convention)`
+    : prefixes.join(' or ');
+row('Env prefix', prefixLabel);
+if (prefixes && prefixes.length && BUNDLER_NOTE[prefixes[0]]) {
+    console.log(`  ${' '.repeat(20)}${BUNDLER_NOTE[prefixes[0]]}`);
+} else if (prefixes && !prefixes.length && pkg) {
+    console.log(`  ${' '.repeat(20)}No recognised bundler. If this ships to a browser, process.env does not`);
+    console.log(`  ${' '.repeat(20)}exist there — the key must be injected at build time somehow.`);
+}
 row('Existing i18n', incumbents.length ? incumbents.map((i) => i.name).join(', ') : 'none');
 row('Langsys present', hasLangsys ? [...langsysInstalled, langsysPhp ? 'langsys/langsys-php' : null].filter(Boolean).join(', ') : 'no');
 row('Recommended pkg', profile.recommendedPackage ?? 'undetermined');
@@ -838,6 +882,12 @@ if (baseLocaleHints.length) {
     row('Base locale hint', baseLocaleHints.map((h) => `${h.value} (${h.from} → ${h.key})`).join(', '));
 } else {
     row('Base locale', 'NOT FOUND — ask. Do not assume en-US; en-GB is a different catalog.');
+}
+if (profile.blocker) {
+    const b = profile.blocker;
+    console.log(`\n  ✗ BLOCKED: ${b.framework} is declared as ${b.declared}; ${profile.recommendedPackage} requires ${b.framework} >= ${b.floor}.`);
+    console.log(`    Installing will not fix this — ${b.framework} itself has to be upgraded first.`);
+    console.log(`    Everything below is still accurate as SCOPE; it is just not actionable yet.`);
 }
 
 if (catalogs.length) {

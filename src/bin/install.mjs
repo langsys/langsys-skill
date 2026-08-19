@@ -32,7 +32,8 @@ const ANY_BLOCK = /<!-- langsys:skill:start v[^>]*-->[\s\S]*?<!-- langsys:skill:
 // ── args ─────────────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2).filter((a) => a !== 'install');
-const flag = (n) => args.some((a) => a === `--${n}`);
+const SHORT = { global: '-g', 'dry-run': '-n' };
+const flag = (n) => args.some((a) => a === `--${n}` || (SHORT[n] && a === SHORT[n]));
 const value = (n) => args.find((a) => a.startsWith(`--${n}=`))?.split('=')[1];
 
 const isGlobal = flag('global');

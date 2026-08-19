@@ -1,6 +1,6 @@
 {
   "name": "langsys-skill",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Portable agent skill for integrating and migrating projects onto the Langsys SDKs — works in Claude Code, Codex, Gemini CLI and Cursor.",
   "license": "MIT",
   "type": "module",
