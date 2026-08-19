@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@langsys/skill`.
+All notable changes to `langsys-skill`.
 
 The rule this file exists to honour, learned from `langsys-js-typescript@0.2.0` —
 which flipped `t(category, phrase)` to `t(phrase, category?)` with **no changelog

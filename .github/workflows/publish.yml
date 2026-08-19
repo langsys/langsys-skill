@@ -1,0 +1,56 @@
+name: Publish to npm
+
+# Mirrors langsys-js-*/publish.yml: OIDC trusted publishing, no NPM_TOKEN
+# anywhere. The package is published UNSCOPED, matching the four packages the
+# langsys org already owns — an npm org owns unscoped packages perfectly well,
+# and the @langsys scope is unused across the product line.
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      # OIDC trusted publishing (tokenless) requires npm >= 11.5.1; Node 22 ships npm 10.x.
+      - run: npm install -g npm@latest
+
+      # Pinned, for the same reason CI pins it: an upstream release must not
+      # change what a publish verifies.
+      - run: npm install -g @ast-grep/cli@0.45.1
+
+      - run: npm test
+
+      # The published tarball is the artifact consumers get, so assert its
+      # contents rather than trusting the `files` array to still be right.
+      - name: Tarball ships the payload, the linters and the tools
+        run: |
+          npm pack --silent >/dev/null
+          tar tzf langsys-skill-*.tgz > /tmp/files.txt
+          for required in \
+            package/src/skill/SKILL.md \
+            package/src/bin/scan.mjs \
+            package/src/bin/doctor.mjs \
+            package/src/bin/install.mjs \
+            package/src/lint/sgconfig.yml \
+            package/VERIFIED.md
+          do
+            grep -qx "$required" /tmp/files.txt \
+              || { echo "::error::$required missing from the tarball"; exit 1; }
+          done
+          test "$(grep -c '^package/src/lint/rules/.*\.yml$' /tmp/files.txt)" -ge 22 \
+            || { echo "::error::ruleset incomplete in the tarball"; exit 1; }
+
+      - run: npm publish --provenance

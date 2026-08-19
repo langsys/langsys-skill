@@ -1,4 +1,4 @@
-# @langsys/skill
+# langsys-skill
 
 A portable agent skill for integrating the [Langsys](https://langsys.dev) translation SDKs into any project — and for migrating projects off i18next, react-intl, or vue-i18n.
 
@@ -7,8 +7,8 @@ Works in **Claude Code**, **Codex CLI**, **Gemini CLI**, and **Cursor**.
 ## Install
 
 ```bash
-npx @langsys/skill install            # this project, auto-detects hosts
-npx @langsys/skill install --global   # every project on this machine
+npx langsys-skill install            # this project, auto-detects hosts
+npx langsys-skill install --global   # every project on this machine
 ```
 
 Options: `--host=claude,codex,gemini,cursor` · `--dir=<path>` · `--dry-run`

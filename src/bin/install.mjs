@@ -6,10 +6,10 @@
  * point into it. Claude Code gets progressive disclosure; Codex/Gemini/Cursor have
  * no equivalent, so their entry docs inline the rules that must not be missed.
  *
- *   npx @langsys/skill install                 # project scope, auto-detect hosts
- *   npx @langsys/skill install --global        # user scope
- *   npx @langsys/skill install --host=claude,codex
- *   npx @langsys/skill install --dry-run
+ *   npx langsys-skill install                 # project scope, auto-detect hosts
+ *   npx langsys-skill install --global        # user scope
+ *   npx langsys-skill install --host=claude,codex
+ *   npx langsys-skill install --dry-run
  *
  * Re-running is safe: shared files are edited only between managed markers, and
  * an unchanged install rewrites byte-identical content.

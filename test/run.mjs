@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Test suite for @langsys/skill.
+ * Test suite for langsys-skill.
  *
  * The load-bearing assertions are the NEGATIVE ones. A lint rule that only
  * proves it fires is half-tested — the failure mode that actually hurts is a
