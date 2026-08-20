@@ -11,7 +11,7 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
-## 0.1.1 - unreleased
+## 0.1.1 - 2026-08-20
 
 Found by using the skill on a real project — a Svelte 3 + Rollup app that had
 never been touched by Langsys. Every item below is something the trial hit.
