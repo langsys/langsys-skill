@@ -11,6 +11,73 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## 0.1.2 - 2026-08-21
+
+The SSR tracks were wrong at the premise, not in the details. Found by
+consulting a production SvelteKit deployment and then verified through four
+rounds of review with the base-SDK and Svelte SDK agents.
+
+### Fixed
+- **The SSR tracks promised crawler-visible translated body copy that the JS
+  SDKs cannot produce.** `t()` / `$t` / `<Phrase>` / `<Translate>` render the
+  **base language** during server rendering in React, Vue and Svelte alike,
+  because `init()` runs in a client-only lifecycle hook and the catalog lives in
+  module globals that only it writes. Four documents said the opposite. **PHP is
+  the one SDK where the original claim was true** — `translatePage()`
+  post-processes finished HTML server-side.
+
+  Measured on a production Italian page: 5,031 characters of visible SSR body
+  text, 100% English, with the full Italian catalog shipped in the hydration
+  payload.
+
+  It survived because `curl | grep` shows base language on a correctly working
+  page *and* on a completely broken one, so every cheap check agreed with the
+  false version. `verify.md` now leads with **verify in a browser, never curl**.
+
+- **Two phantom locale helpers.** The tracks called `resolveLocale` (Next.js)
+  and `negotiate` (SvelteKit) — neither exists. The second was introduced by the
+  commit that fixed the first. Markdown does not typecheck, so an agent
+  following either track wrote code that could not run. Both now use
+  `LangsysApp.detectPreferredLocale`, with its result validated against the
+  project's locale list.
+
+- **A prescribed server-side translator that dropped interpolation.** Caught by
+  the base-SDK agent before publish: it would have rendered the literal
+  `Hello {name}` server-side and correctly client-side — a hydration mismatch on
+  exactly the strings carrying data. Now routes through the SDK's public, pure
+  `interpolate` and guards the content-block object case.
+
+- **A false claim that the locale 422 is `debug`-gated.** It is not.
+  `Logger.warn` and `Logger.error` are both ungated, so the server's exact
+  sentence is on the console by default. Telling users the diagnostic was
+  missing would have sent them hunting for a line in front of them.
+
+- **`install` silently ignored unknown options.** `--target=claude` — a
+  plausible typo for `--host=` — installed to every detected host and reported
+  success. Unknown options now exit non-zero with usage.
+
+### Added
+- `core/rendering-mode.md` rebuilt around what each mode actually delivers, and
+  around resolving crawler-visible text from the fetched catalog directly, which
+  is the only way to put translated text in server HTML in a JS framework.
+- Real locale precedence chains with an offerability filter, replacing the
+  undefined helpers. Measured behavior included: `detectPreferredLocale` returns
+  the visitor's own tag on no match, does not validate input, and `false` is
+  close to unreachable — so the common `|| BASE` idiom guards a branch that
+  essentially never fires.
+- The `supportedLocales` trap: built from `getLocalesFlat()` it is the ~573-entry
+  global CLDR list, so nearly any `Accept-Language` "matches" and every catalog
+  fetch 422s.
+- `hreflang` deduplication by URL token. Two locales sharing one token
+  (`zh-tw`/`zh-cn` → `zh`) threw `each_key_duplicate` and blanked **every page**
+  of a production site — a content-only change in the Translation Manager,
+  no deploy.
+- Honest cache TTLs, including that two workers mean two independent caches, so
+  the same URL alternates between old and new copy during propagation.
+- `src/lint/phantom-helpers.mjs` — flags domain-shaped identifiers that are
+  neither defined in the sample nor exported by the SDK, with the allowlist read
+  from the pinned `dist/index.d.ts` rather than from memory.
+
 ## 0.1.1 - 2026-08-20
 
 Found by using the skill on a real project — a Svelte 3 + Rollup app that had

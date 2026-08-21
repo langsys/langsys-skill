@@ -36,6 +36,35 @@ const SHORT = { global: '-g', 'dry-run': '-n' };
 const flag = (n) => args.some((a) => a === `--${n}` || (SHORT[n] && a === SHORT[n]));
 const value = (n) => args.find((a) => a.startsWith(`--${n}=`))?.split('=')[1];
 
+/**
+ * Reject unknown options instead of ignoring them.
+ *
+ * `--target=claude` looks exactly like a flag this tool would have — the real
+ * one is `--host=`, and `--dir=` is the one that takes a path — so a typo used
+ * to install to EVERY detected host while reporting success. The user believes
+ * they scoped the install; they got a wider one, and nothing said otherwise.
+ * That is this project's own failure class: no signal reads as a pass.
+ */
+const KNOWN_FLAGS = ['global', 'dry-run', 'help'];
+const KNOWN_VALUES = ['host', 'dir'];
+const KNOWN_SHORT = Object.values(SHORT);
+
+const unknown = args.filter((a) => {
+    if (!a.startsWith('-')) return false;
+    if (KNOWN_SHORT.includes(a)) return false;
+    const name = a.replace(/^--?/, '').split('=')[0];
+    return !KNOWN_FLAGS.includes(name) && !KNOWN_VALUES.includes(name);
+});
+
+if (unknown.length) {
+    console.error(`langsys-skill: unknown option${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')}\n`);
+    console.error('  --host=claude,codex   install for specific hosts (default: auto-detect)');
+    console.error('  --dir=<path>          install into <path> (default: cwd)');
+    console.error('  --global, -g          install for all projects, into your home directory');
+    console.error('  --dry-run, -n         show what would be written, write nothing');
+    process.exit(2);
+}
+
 const isGlobal = flag('global');
 const dryRun = flag('dry-run');
 const target = resolve(value('dir') ?? process.cwd());

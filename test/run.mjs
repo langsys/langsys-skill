@@ -1227,3 +1227,36 @@ declare class C {
 
     rmSync(dir, { recursive: true, force: true });
 });
+
+test('install: unknown options are rejected, not silently ignored', () => {
+    // `--target=claude` looks like a real flag (the real one is `--host=`), and
+    // used to install to EVERY detected host while reporting success.
+    const run = (extra) => {
+        const dir = mkdtempSync(join(tmpdir(), 'langsys-inst-'));
+        let out = '', code = 0;
+        try {
+            out = execFileSync('node', [join(root, 'src/bin/install.mjs'), '-n', '--dir=' + dir, ...extra],
+                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (e) { out = (e.stdout ?? '') + (e.stderr ?? ''); code = e.status; }
+        rmSync(dir, { recursive: true, force: true });
+        return { out, code };
+    };
+
+    // POSITIVE — the typo that motivated this.
+    const bad = run(['--target=claude']);
+    assert.equal(bad.code, 2, 'an unknown option must be a non-zero exit, not a wider install');
+    assert.match(bad.out, /unknown option --target=claude/);
+    assert.match(bad.out, /--host=/, 'must show the flag they probably meant');
+    // Match the install SUMMARY ("6 written, 0 unchanged."), not the word
+    // "written" — which appears in --dry-run's own help text.
+    assert.doesNotMatch(bad.out, /\d+ written/, 'must not report an install it did not scope');
+    assert.doesNotMatch(bad.out, /hosts:/, 'must not proceed far enough to resolve hosts');
+
+    assert.equal(run(['--wibble']).code, 2, 'unknown bare flag');
+    assert.equal(run(['--no-such=1']).code, 2, 'unknown valued flag');
+
+    // NEGATIVE — every real option must still be accepted.
+    for (const ok of [[], ['--host=claude'], ['--host=claude,codex'], ['-g'], ['--global'], ['-n']]) {
+        assert.equal(run(ok).code, 0, `real option must be accepted: ${ok.join(' ') || '(none)'}`);
+    }
+});
