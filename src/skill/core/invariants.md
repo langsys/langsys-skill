@@ -36,7 +36,7 @@ t('Hello, {name}!', 'Greetings', { name });                                   //
 Do not create `locales/en.json`. Do not create a `messages/` directory. Do not invent dot-keys.
 
 ```ts
-t('Welcome to my app', 'Home');   // ✅ the English IS the key AND the default
+t('Welcome to my app', 'Home');   // ✅ the source text IS the key AND the default
 t('home.welcome');                 // ❌ registers the literal string "home.welcome"
 ```
 

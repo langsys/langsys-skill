@@ -151,7 +151,8 @@ Gate, but seed the gate from the server so it never fires on the happy path:
 {#if !isLangsysReady}
     <div class="overlay">
         <p>Initializing language system…</p>
-        <button onclick={() => (isLangsysReady = true)}>Continue in English</button>
+        <!-- Name your base locale here, not 'English' — baseLocale is config. -->
+        <button onclick={() => (isLangsysReady = true)}>Continue in {BASE_LOCALE_NAME}</button>
     </div>
 {:else}
     {@render children()}
