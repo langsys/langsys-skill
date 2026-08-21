@@ -137,7 +137,32 @@ Four consequences, three of which contradicted what the skill said:
 3. **The input is not validated** — `'!!!'` comes back as `'!!!'`. Nothing in the signature suggests this.
 4. **`false` is close to unreachable.** `null`, `undefined` and `''` all produced a locale. So the widespread `detectPreferredLocale(h, s) || BASE` idiom guards a branch that essentially never fires, while the branch that does fire — a truthy, unsupported tag — passes straight through.
 
-**The `supportedLocales` trap.** Building that argument from `LangsysApp.getLocalesFlat()` passes the ~573-entry **global CLDR** list, not the project's locales. Nearly any `Accept-Language` then "matches", so the helper confidently returns e.g. `de-de` and every catalog request 422s with *"The locale provided is not a base or target locale for this project"* — logged **only** under `debug: true`. Empty catalog, clean console. This was a live defect in the Svelte SDK's own README, since fixed.
+**The `supportedLocales` trap.** Building that argument from `LangsysApp.getLocalesFlat()` passes the ~573-entry **global CLDR** list, not the project's locales. Nearly any `Accept-Language` then "matches", so the helper confidently returns e.g. `de-de` and every catalog request 422s. This was a live defect in the Svelte SDK's own README, since fixed.
+
+### Three diagnostics, three different gatings — and I got one wrong
+
+I asserted the 422 was `debug`-gated. **It is not**, and the base-SDK agent caught it. `Logger.log()` checks `debugEnabled`; `Logger.warn()` and `Logger.error()` do not (`dist/index.mjs`, `var Logger = class`). Executed against the published dist with a stubbed 422 and `debug: false`:
+
+```
+>> warn: [Langsys Warning] LangsysAppAPI failed to query
+   {"status":false,"message":"The locale provided is not a base or target locale
+    for this project","http":{"status":422,…}}
+console.warn calls with debug:false = 1  => NOT debug-gated
+```
+
+The corrected picture — each of the three is gated differently, which is exactly why guessing failed:
+
+| Failure | Diagnostic |
+|---|---|
+| Locale not a project target (422) | **Warns by default.** Server's exact sentence, locale sent, project id. Label is generic (`LangsysAppAPI failed to query`) and does not enumerate valid targets |
+| Malformed BCP 47 (`'!!!'`) | **Detected but `debug`-gated.** The value still passes through as a "locale" |
+| Seeding XOR — one parameter without the other | **No diagnostic at all.** Not gated: absent. Under `debug` it shows only as a *missing* line — `Populated sTranslations…` never prints |
+
+Two lessons, and the second is the sharper one:
+
+- **Neighbouring facts made the false one plausible.** Two genuinely gated diagnostics sat on either side of it, so a third read as consistent with everything around it and I asserted it without executing it. Same shape as the interpolation defect I shipped: the wrong claim was *coherent*.
+- **My first probe returned the answer I expected, for the wrong reason.** It printed `warn calls = 0 -> silent`, which would have confirmed my claim — but it had failed config validation before ever reaching the HTTP path. A test that exits early produces the same output as the phenomenon under test. **Before believing a negative result, prove the code path ran**: the corrected probe asserts on the returned error (`HTTP 422`), not merely on the absence of output.
+
 
 **Data that exists on the wire and is discarded.** `GET /api/authorize-project/{id}` returns `base_locale`, `target_locales` and a `default_locales` map (`{es: "es-CR", …}`), but `init()` reads only `key_type` from that response (`dist/index.mjs:775-781`) and ignores the rest. Everything needed to resolve `es` → `es-CR` automatically is already fetched. Raised with the base-SDK agent.
 

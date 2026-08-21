@@ -173,7 +173,17 @@ Two things this shows that reading the signature does not:
 - **The input is not validated.** Garbage comes straight back out as a "locale".
 - **`false` is rare in practice.** A missing, null or empty header still produced a locale here, so code written to lean on `|| BASE` catching the undetectable case is mostly guarding a branch that does not fire — while the branch that *does* fire, an unsupported-but-truthy tag, sails through.
 
-> **`supportedLocales` must be YOUR PROJECT's locales.** Building it from `LangsysApp.getLocalesFlat()` passes the ~573-entry **global CLDR** list, against which nearly any `Accept-Language` "matches" — so the helper returns something like `de-de` with full confidence and every catalog request 422s with *"The locale provided is not a base or target locale for this project"*. That failure is logged **only** under `debug: true`: empty catalog, clean console. This was a live defect in the Svelte SDK's own README.
+> **`supportedLocales` must be YOUR PROJECT's locales.** Building it from `LangsysApp.getLocalesFlat()` passes the ~573-entry **global CLDR** list, against which nearly any `Accept-Language` "matches" — so the helper returns something like `de-de` with full confidence and every catalog request 422s. This was a live defect in the Svelte SDK's own README.
+>
+> **Look in the console — the server's exact sentence is already there**, by default, no `debug` needed:
+>
+> ```
+> [Langsys Warning] LangsysAppAPI failed to query
+>   { message: 'The locale provided is not a base or target locale for this project',
+>     http: { status: 422, data: '{"project_id":"…","locale":"de-de"}' } }
+> ```
+>
+> The label is generic and it does not list your valid targets, so it is easy to scroll past in a noisy app — but it is not missing. Search the console for `Langsys Warning` before assuming there is no diagnostic.
 
 
 ---

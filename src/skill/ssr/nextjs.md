@@ -163,7 +163,17 @@ detectPreferredLocale('de',  OFFERED)  ->  'de'      NOT in your list
 detectPreferredLocale('!!!', OFFERED)  ->  '!!!'     not even a locale
 ```
 
-On no match it returns the visitor's tag unchanged — not `false`, not your base locale — and it does not validate its input. Storing that gives you a locale with no catalog: the catalog request 422s with *"The locale provided is not a base or target locale for this project"*, and `getTranslations()` logs that **only** under `debug: true`. Empty catalog, clean console.
+On no match it returns the visitor's tag unchanged — not `false`, not your base locale. Storing that gives you a locale with no catalog, and the request 422s.
+
+**The diagnostic is not hidden.** `Logger.warn` is not debug-gated, so the 422 prints by default with the server's exact sentence, the locale sent, and the project id:
+
+```
+[Langsys Warning] LangsysAppAPI failed to query
+  { message: 'The locale provided is not a base or target locale for this project',
+    http: { status: 422, data: '{"project_id":"…","locale":"de-de"}' } }
+```
+
+Malformed input is the gated case: `'!!!'` is *detected* as invalid BCP 47, but that warning fires only under `debug: true`, and the value still passes through as a "locale".
 
 > **`supportedLocales` must be your project's locale list.** Built from `LangsysApp.getLocalesFlat()` it is the ~573-entry global CLDR list, against which nearly any `Accept-Language` "matches" — so the helper confidently returns `de-de` and every catalog fetch 422s.
 
@@ -187,7 +197,7 @@ Only meaningful with a write key — i.e. in development.
 
 All three checked against the published `langsys-js-typescript@0.6.5`:
 
-- **Both parameters, or nothing happens.** The guard is `if (initialTranslations && initialTranslationsLocale)` with no `else` and no warning. Pass one alone and it is ignored with **zero diagnostics** — visible only under `debug: true`.
+- **Both parameters, or nothing happens.** The guard is `if (initialTranslations && initialTranslationsLocale)` with no `else` and no warning. Pass one alone and it is ignored with **no diagnostic at all** — not a gated one, none. Under `debug: true` you can only infer it from an *absence*: the line `Populated sTranslations with initial data for locale: …` never appears. Checking for a missing log line is the only signal there is.
 - **`init()` mutates the object you pass it.** It writes a `__category__` key into every category and adds `__uncategorized__` if absent. That object is your server payload — do not hand it something frozen or shared.
 - **The seeded no-refetch window is 60 seconds, not permanent.** A long-lived session that re-settles on the same locale later *will* fetch again. Correct behavior, surprising in a network tab.
 
@@ -233,7 +243,7 @@ Use `makeCatalogT(catalog, locale)` for `<title>`, `<meta name="description">`, 
 | Head/meta is base language | Using `t()` for head fields; use the pure catalog lookup |
 | Wrong locale served under load | `init()` called during SSR — module globals raced across requests |
 | Catalog request 422s: "not a base or target locale" | A bare `es` where the project offers `es-CR`, or `supportedLocales` built from the global CLDR list |
-| Empty catalog, nothing in the console | The 422 above — logged **only** under `debug: true` |
+| Empty catalog | The 422 above — search the console for `Langsys Warning`; it prints by default |
 
 ## Checklist
 

@@ -134,7 +134,7 @@ export const prerender = false;
 
 Three behaviors of the seeding path worth knowing, all verified against `langsys-js-typescript@0.6.5`:
 
-- **Both parameters or nothing happens.** The guard is `if (initialTranslations && initialTranslationsLocale)` with no `else` and no warning. Pass one alone and it is ignored with zero diagnostics — visible only under `debug: true`.
+- **Both parameters, or nothing happens.** The guard is `if (initialTranslations && initialTranslationsLocale)` with no `else` and no warning. Pass one alone and it is ignored with **no diagnostic at all** — not a gated one, none. Under `debug: true` you can only infer it from an *absence*: the line `Populated sTranslations with initial data for locale: …` never appears. Checking for a missing log line is the only signal there is.
 - **`init()` mutates the object you pass it**, writing a `__category__` key into every category and adding `__uncategorized__` if absent. That object is your SvelteKit `data`. Do not hand it something frozen or shared.
 - **The seeded no-refetch window is 60 seconds, not permanent.** A long-lived session that re-settles on the same locale later *will* fetch again. Correct behavior, surprising in a network tab.
 
@@ -268,7 +268,7 @@ Same shape: resolve locale, fetch the catalog before rendering, resolve crawler-
 | Seeding appears to do nothing | Only one of `initialTranslations` / `initialTranslationsLocale` passed — fails silently |
 | Wrong locale served under load | `init()` called during SSR — module globals raced across requests |
 | Catalog request 422s: "not a base or target locale" | A bare `es` where the project offers `es-CR`, or `supportedLocales` built from the global CLDR list |
-| Empty catalog, nothing in the console | The 422 above — `getTranslations()` logs it **only** under `debug: true` |
+| Empty catalog | The 422 above — search the console for `Langsys Warning`; it prints by default |
 | Two catalog requests per load | Seeding missing, or more than 60 s between init and locale settle |
 | Every page blank after adding a locale | Duplicate `hreflang` keys — dedupe by URL token |
 | Every string renders as its category name | Stale SDK build inlined at deploy time — pin or verify `link:`/workspace deps |
