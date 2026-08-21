@@ -205,6 +205,40 @@ Two things worth keeping from this:
 - **The same failure signature, one level up.** Instance 10 was a claim that rendered as plausible text; so was its fix. A dropped interpolation does not throw — it produces a sentence with a brace in it, on the subset of strings that carry data, only under SSR. It would have shipped into four tracks and been found by users.
 - **The omission that must be documented, not inferred.** A pure translator cannot harvest missing tokens without a process-global flush queue, which is the coupling it exists to remove. So **server-only phrases never self-register even though they render every request**. That is a deliberate trade, and the skill now states it in `verify.md` §3d rather than leaving it to be discovered.
 
+### Agreement is not evidence when the category is wrong
+
+Contributed by the React SDK owner, correcting a worse version of the same lesson that I had
+written first.
+
+Designing the server SDK's tokenizer, I saw two frameworks (Vue and Svelte) emit HTML comment
+markers into their server output that differed between capture and inline rendering. They looked
+like framework noise, so I wrote **"strip HTML comments before tokenizing"** into the
+specification as a settled core requirement.
+
+React's owner then measured the third case. React emits `<!-- -->` **precisely where it has
+adjacent text children** and omits it where it does not — and the tokenizer does not coalesce
+adjacent text nodes. So in React those comments are an exact isomorphism of the client's
+text-node structure. Stripping them merges text runs and produces a different `custom_id`,
+fragmenting the catalog **at interpolation boundaries — exactly where parameters live**.
+
+My first write-up called this "two agreeing observations are not a general rule." Theirs is
+better, and it is the one worth keeping:
+
+> Vue's and Svelte's markers *are* framework noise; that read was correct. React's look identical
+> and are the opposite. The tell was not that there were two observations instead of three.
+> **"Comment" is a *syntactic* category, and the property that mattered — does this node carry
+> structure — is *semantic*.** A third framework agreeing would not have helped. Reading one
+> renderer's reason for emitting them would have.
+
+The distinction matters because the two lessons prescribe different actions. Mine implies
+**collect more samples**. Theirs says samples cannot help: **no number of instances repairs a
+category error, only the reason does.** Three agreeing frameworks would have produced a more
+confident wrong answer, not a right one.
+
+The familiar half is intact — a stripped-comment tokenizer emits clean, plausible HTML and a
+stable-looking id. The defect is invisible from inside the function and exists only relative to a
+catalog you cannot see from there.
+
 ### A cited line number is not evidence until something reads it back
 
 Contributed by the base-SDK agent, who found six of their own citations off by a few lines
