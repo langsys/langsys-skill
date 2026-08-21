@@ -10,6 +10,12 @@ Langsys has three ways to mark content for translation. They answer different qu
 | A block of markup — article, nav, form, marketing section | `<Translate>` | **Splits.** Tokenizes each text node and translatable attribute as its own phrase, registered together as one content block. |
 | One sentence that happens to contain inline markup | `<Phrase>` | **Keeps together.** Encodes the whole run as a single phrase. Does not split at tag boundaries. |
 
+**These are two different pipelines, not two settings on one.** `<Translate>` tokenizes each text
+node separately and registers a **content block** with a computed id; `<Phrase>` joins the whole run
+into a **single phrase string** and looks it up like any other phrase. It produces no content block
+and no id. That is why the choice is not stylistic — the two primitives put different things in
+your catalog, and a mistake is not visible in the base language.
+
 The question is **not** "how big is this?" It is:
 
 > **Does this tag boundary belong to the language, or to the layout?**
