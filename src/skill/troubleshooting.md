@@ -26,12 +26,44 @@ locale guard is only updated on the multi-token path.
 **Fix:** do not wrap a single element in `<Translate>`. Translate the attribute where it lives.
 `<Translate>` is for a block of markup with several pieces of content in it.
 
-## A `<Translate>` block is stuck on its loading text
+## A `<Translate>` block froze — it never updates again
 
-The content resolved, the network tab shows the data, and the block still reads `Loading…`.
+The state changed, the promise resolved, the store emitted. The block still shows its first value.
 
-**Cause:** `<Translate>` wrapping an async boundary — `{#await}` or equivalent. The block is
-tokenized **once, at mount**, when the pending branch is what is rendered. On the single-token
+**Cause:** the subtree yielded exactly **one** token, so the SDK assigned `element.innerText`,
+replacing every child — including the anchor nodes the framework uses to find that block. Every
+later update targets nodes that are no longer in the document.
+
+**Measured scope** (real `<Translate>` against published `0.6.5`, with the `innerText` setter
+instrumented rather than the outcome inferred):
+
+| content in the block | client-only | hydrated |
+|---|---|---|
+| `{#if flag}…{:else}…{/if}` — one phrase per branch | **frozen** | **frozen** |
+| a lone reactive expression `{msg}` | **frozen** | **frozen** |
+| `{#await}` | updates | **frozen** |
+| two or more phrases in the subtree | updates | updates |
+
+**No SSR is required.** `{#if}` and a lone reactive expression freeze under a plain client-only
+mount. Multi-token subtrees are clean, which confirms the single-token branch is the whole trigger.
+
+> **`{#await}` surviving a client-only mount is timing luck, not safety.** The effect runs before
+> the await block has populated the host, so `tokenizeContent` hits its empty-`childNodes` early
+> return (`dist/index.mjs`), sets `parseComplete` and never writes. Under hydration the pending
+> branch is already in the DOM from the server, the host **is** populated, the write lands, and it
+> freezes.
+>
+> So the same code works in a client-only dev setup and breaks the moment SSR is switched on —
+> **"works in dev, freezes in prod"**, which is worse than a consistent failure.
+>
+> And client-only is not actually fine: that early return marks the block parsed **without
+> tokenizing it**, so nothing is ever registered. The content never reaches the catalog at all.
+
+## `<Translate>` around `{#await}`: the placeholder is what gets registered
+
+Underrated next to the freeze, and it **survives the code fix** if nobody cleans the catalog
+afterwards. Under hydration the block is tokenized once, at mount, when the pending branch is what
+is rendered. On the single-token
 path the SDK then assigns `element.innerText`, which replaces every child of the host **including
 the anchor nodes the framework uses to find that block**. The framework's later update targets
 nodes that are no longer in the document, so the resolved content never appears.
