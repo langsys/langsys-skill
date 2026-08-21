@@ -160,6 +160,23 @@ Same `{m0o}`/`{m0c}` wire format as the JS `<Phrase>`, so a block rendered throu
 3. **It wins over `data-langsys-contentblock`** when both are present.
 4. **Reordering is supported.** Translators may move `{m0o}`/`{m0c}`; the markup is rebuilt where the tokens land, and attributes (`class`, `href`) are preserved. A dropped, unbalanced, or unknown-index token renders the text without markup rather than failing.
 
+> **These markers are PHP's, and the JS SDKs do not all understand them.** Verified across the
+> published artifacts:
+>
+> | Marker | `langsys-php@1.3.1` | JS SDKs (`0.6.5`) |
+> |---|---|---|
+> | `data-langsys-phrase` | reads it (`HtmlParser.php:291`) | **reads it** — `PHRASE_MARKER_ATTRS` accepts both spellings |
+> | `data-ls-phrase` | **absent from `src/` entirely** | writes and reads it |
+> | `data-langsys-contentblock` | reads it (`HtmlParser.php:264`) | **no equivalent — zero occurrences.** `<Translate>` stamps no content-block marker at all |
+>
+> So the marker vocabulary is **not symmetric in either direction.** A JS `<Phrase>` passing
+> through `translatePage()` is re-split, because PHP does not recognise `data-ls-phrase`. And
+> there is no JS counterpart to `data-langsys-contentblock` to reach for — a `<Translate>` is
+> identified by its component, not by an attribute in the markup.
+>
+> Do not carry an attribute across the boundary on the assumption that a marker documented for one
+> SDK works in the other.
+
 **`data-langsys-contentblock` does not solve the splitting problem.** It forces a block — the direction PHP already defaults to — which is the opposite of what a split sentence needs.
 
 **Script and style content is never touched.** Opaque subtrees and `translate="no"` regions are preserved verbatim and contribute nothing to the phrase, so a marked ancestor cannot pull inline JS into the shared catalog or let a catalog entry rewrite it back into the page.
