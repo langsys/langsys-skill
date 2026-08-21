@@ -3,17 +3,25 @@
 Read [integrate/react.md](../integrate/react.md) first. This adds the server half.
 
 > **Decide the rendering mode first: [core/rendering-mode.md](../core/rendering-mode.md).**
-> Public site → SSR, because only SSR puts *current* translations in the HTML a crawler
-> fetches; a prerendered page serves a build-time snapshot that humans never see as stale.
-> App behind a login → client-only with a ready gate, and skip this track entirely.
+> Public site → SSR; app behind a login → client-only with a ready gate, and skip this track.
+>
+> **Know what SSR does and does not give you here.** `t()`, `<Phrase>` and `<Translate>`
+> render the **base language** during server rendering — `init()` runs in a client-only
+> hook, so the catalog is never populated on the server, and seeding does not change that.
+> This track buys one catalog fetch instead of two, no flash after hydration, and a
+> *current* catalog per request. For text a crawler or a social scraper must read,
+> resolve it from the fetched catalog directly — see
+> [core/rendering-mode.md](../core/rendering-mode.md#resolve-crawler-visible-text-through-a-pure-catalog-function).
 
 ## The problem
 
-Without seeding, the server renders untranslated markup, then the client fetches the catalog after hydration and re-renders. Users see a flash of the base language, and you pay for two fetches.
+Without seeding, the client fetches the catalog after hydration and re-renders — a flash of the base language, and two fetches for one page.
 
 ## The solution
 
 Fetch the catalog on the server, pass it to the client, seed it through `initialTranslations`.
+
+**What seeding does not do is translate the server render.** The server HTML carries base-language body copy either way; seeding removes the *flash* and the second fetch. Text that must be translated in the served HTML has to be resolved from the catalog directly — see §"Crawler-visible text" below.
 
 ---
 
@@ -153,6 +161,30 @@ Same shape: fetch in the root `loader`, read with `useLoaderData()`, pass to `in
 
 Only meaningful with a write key — i.e. in development.
 
+## What seeding actually does — three verified behaviors
+
+All three checked against the published `langsys-js-typescript@0.6.5`:
+
+- **Both parameters, or nothing happens.** The guard is `if (initialTranslations && initialTranslationsLocale)` with no `else` and no warning. Pass one alone and it is ignored with **zero diagnostics** — visible only under `debug: true`.
+- **`init()` mutates the object you pass it.** It writes a `__category__` key into every category and adds `__uncategorized__` if absent. That object is your server payload — do not hand it something frozen or shared.
+- **The seeded no-refetch window is 60 seconds, not permanent.** A long-lived session that re-settles on the same locale later *will* fetch again. Correct behavior, surprising in a network tab.
+
+> **`init()` must not run during server rendering — and the reason is not `document is not defined`.** `LangsysApp` is a hard module singleton whose catalog lives in module globals. Under a long-lived Node server, one process serves every concurrent request, so server-side init is a **cross-request data race**: an in-flight `/de` render can observe `/it`'s catalog. Constructing your own `Translations` does not escape it — its constructor subscribes to the same globals. **A `typeof window` guard does not make server-side init safe.**
+
+## Crawler-visible text
+
+Because the reactive primitives are inert during SSR, anything a crawler or a social scraper must read has to come from the fetched catalog directly. It is a pure lookup, so none of the singleton's problems apply:
+
+```ts
+// Pure, request-scoped, no module state. Same fallback semantics as t().
+const ct = (catalog) => (phrase, category) =>
+    catalog?.[category ?? '__uncategorized__']?.[phrase] || phrase;
+```
+
+Use it for `<title>`, `<meta name="description">`, Open Graph and Twitter fields, `<h1>`, and any copy you actually want indexed. Use the reactive primitives for interactive UI.
+
+**Social scrapers never run your JavaScript at all** — Facebook, Slack, LinkedIn and iMessage read the served HTML once and stop. For those, the server-resolved head is the only thing they will ever see.
+
 ## Common failures
 
 | Symptom | Cause |
@@ -162,6 +194,9 @@ Only meaningful with a write key — i.e. in development.
 | Hydration mismatch | Server and client resolved different locales — resolve once on the server and pass it down |
 | Works in dev, not in prod | Write key in dev vs read-only in prod, and the phrase was never registered. Exercise it in dev first |
 | Key visible in the client bundle | Server-only fetch should use unprefixed env vars |
+| Body copy is base language in `curl` output | **Expected** — `t()` is inert during SSR. Verify in a browser |
+| Head/meta is base language | Using `t()` for head fields; use the pure catalog lookup |
+| Wrong locale served under load | `init()` called during SSR — module globals raced across requests |
 
 ## Checklist
 
@@ -171,4 +206,7 @@ Only meaningful with a write key — i.e. in development.
 - [ ] Locale fallback uses the explicit guard, not `|| 'en-US'`
 - [ ] Rendering **not** gated on `ready` when seeded
 - [ ] Network tab shows one catalog request, not two
+- [ ] Crawler-visible strings resolved from the catalog, not `t()`
+- [ ] `init()` never runs during server rendering
+- [ ] Verified **in a browser**, not with `curl`
 - [ ] Read-only key in production

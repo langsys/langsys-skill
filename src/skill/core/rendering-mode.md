@@ -1,69 +1,87 @@
 # Rendering mode: the decision before the SSR track
 
-**Read this before any `ssr/` document.** It applies to every framework — Next.js, Nuxt, SvelteKit, PHP — because the reasoning is about Langsys, not about the framework.
+**Read this before any `ssr/` document.** It carries a fact about the JS SDKs that changes what SSR is *for*, and getting it wrong sends you down a track chasing something the SDK does not do.
 
-## The one question
+## The fact that governs everything below
+
+**In React, Vue and Svelte, the reactive primitives — `t()`, `$t()`, `<Phrase>`, `<Translate>` — render the base language during server rendering. Always.**
+
+Not sometimes, not when misconfigured. The catalog lives in module-global signals that only `LangsysApp.init()` writes, `init()` runs in a client-only lifecycle hook (`useEffect` / `onMounted` / `onMount`), and those hooks do not run on the server. So the server emits your base-language text and the client swaps it after hydration.
+
+`init()` cannot simply be moved to the server to fix this. `LangsysApp` is a hard module singleton and the catalog lives in module globals, so under a long-lived Node server one process serves every concurrent request: seeding those globals server-side is a **cross-request data race** — an in-flight `/de` render can observe `/it`'s catalog. Constructing your own `Translations` does not escape it either; its constructor subscribes to the same globals. **There is no request-scoped translator in the SDK.** (Verified against `langsys-js-typescript@0.6.5`; see [VERIFIED.md](../../VERIFIED.md).)
+
+**PHP is the exception**, and the reason is structural: `translatePage($html)` post-processes finished HTML on the server, so PHP genuinely emits fully translated body copy. Everything in this document about base-language server output applies to the **JS frameworks only**.
+
+## What that means for crawlers
+
+| | Body copy from `t()`/`<Phrase>`/`<Translate>` | Strings you resolve from the fetched catalog | Realtime for humans |
+|---|---|---|---|
+| **SSR (JS)** | base language | **translated, current per request** | yes |
+| **Prerendered (JS)** | base language | translated, build-time snapshot | yes, after hydration |
+| **Client-only (JS)** | no HTML at all | n/a | yes |
+| **PHP SSR** | **translated, current** | n/a | yes |
+
+The second column is the one that matters, and it is the part most people miss. **The catalog is already on your server** — fetching it is what seeding requires. Nothing stops you from resolving a string against it directly during the render. That is a pure lookup, so it has none of the singleton's problems.
+
+### Resolve crawler-visible text through a pure catalog function
+
+Four lines, no globals, safe under concurrency, and it is the only way to put translated text in server HTML in a JS framework:
+
+```ts
+// One request's catalog in, a translator out. No module state touched.
+export function makeCatalogT(catalog) {
+    return (phrase, category) =>
+        catalog?.[category ?? '__uncategorized__']?.[phrase] || phrase;
+}
+```
+
+The `|| phrase` fallback is deliberate and matches what `t()` does before a catalog loads: a translation outage degrades to base language, never to a blank page.
+
+Use it for everything a crawler or a social scraper reads and JavaScript never fixes in time:
+
+- `<title>`, `<meta name="description">`, Open Graph and Twitter card fields
+- `<h1>` and the copy you actually want indexed
+- anything rendered into a PDF, an email, or a feed
+
+Use the reactive primitives for everything else. They are correct for interactive UI; they are simply not a server-rendering tool.
+
+> **Social scrapers never run your JavaScript at all.** Facebook, Slack, LinkedIn and iMessage read the served HTML once and stop. For those, the server-resolved head is not an optimization — it is the only thing they will ever see.
+
+## So: SSR or not?
 
 > **Do crawlers matter for this app?**
 
-That is the whole decision, and it is a product question, not a technical one.
+Still the right question, still a product question — but answer it knowing what each mode actually buys.
 
 | | Public website — marketing, docs, storefront, blog | Application — behind a login, or a tool |
 |---|---|---|
 | **Lean** | **SSR** | **Client-only, with a ready gate** |
-| Why | Crawlers must see translated text, and see it *current* | No crawler, so there is nothing to serve HTML for |
+| Why | A current catalog on every render, and one client fetch instead of two | No crawler, so there is nothing to serve HTML for |
 
-## Why SSR for anything public
+**SSR is still the right default for a public site.** The reasons are narrower than "the crawler sees translated markup", and they are real:
 
-Langsys is a **realtime** translation manager: someone fixes a phrase in the Translation Manager and the change is live. Whether that property survives depends entirely on where the HTML comes from.
+1. Server-resolved strings are rendered against a **current** catalog per request, not a build-time snapshot.
+2. The client is seeded, so there is one catalog fetch instead of two, and no flash.
+3. Per-request locale resolution — cookie, header, URL — works at all.
 
-| Mode | Crawler sees translated HTML | Crawler sees *current* translations | Realtime for humans |
-|---|---|---|---|
-| **SSR** | yes | **yes** | yes |
-| Prerendered / static | yes | **no — a build-time snapshot** | yes, after hydration |
-| Client-only | **no** | n/a | yes |
+**Prerendering is not the trap I once described**, because it does not lose translated body copy: SSR never had it either. What it loses is freshness in the first column above — a phrase fixed today stays wrong in indexed head and SEO copy until the next build. If static is a hard constraint, prerender per locale and schedule rebuilds against translation updates.
 
-**Only SSR gives you both.** Every request renders against the current catalog, so a translation fixed five minutes ago is in the HTML a crawler fetches now.
-
-### Prerendering is the trap, because it looks like it works
-
-A prerendered site *does* emit translated HTML, so it passes the obvious check. What it emits is a snapshot from build time.
-
-The client SDK then re-fetches after hydration and corrects the page — so **a human visitor sees current text and nothing looks wrong**. The crawler does not run your JavaScript on that schedule; it indexed the snapshot. So:
-
-- a mistranslation fixed today is still in search results next month
-- adding a locale requires a rebuild and re-crawl before it exists to anyone searching
-- nobody reports it, because every human who looks at the page sees the corrected version
-
-That is a silent staleness with the same signature as the other failures this skill exists to prevent: correct in the case you check, wrong in the case that matters.
-
-**If the site must be static** — no runtime available, a CDN-only host, an existing pipeline — prerendering per locale is still far better than client-only, and the SSR track's seeding mechanism works unchanged at build time. Just schedule rebuilds against translation updates, and know that your indexed content is only as fresh as your last build.
-
-## Why client-only is genuinely fine for an app
-
-Behind a login there is no crawler, so serving translated HTML buys nothing. Client-only is **simpler, and loses none of the realtime property**:
-
-- one `init()` high in the tree
-- a ready gate — a loader — until `init()` resolves
-- no seeding, no hydration reconciliation, no locale mismatch between server and client
-
-The flash-of-untranslated-content problem that SSR seeding exists to solve is handled by the gate: render the loader, not the base language, until translations are in. Do not skip the gate and let the base language paint first — that is the FOUC the seeding docs are about, reintroduced by hand.
-
-This is a real simplification, not a compromise. Reach for the SSR track when crawlers matter; otherwise the loader is the right answer.
+**Client-only remains genuinely fine for an app.** No crawler, no seeding, no hydration reconciliation — one `init()`, one ready gate, done. The gate is what prevents the flash: render the loader, not the base language, until `init()` resolves.
 
 ## The in-between cases
 
-**A marketing site in front of an app.** These are usually one deployment and two rendering needs. SSR the public routes; the authenticated routes can gate on a loader. Do not force one mode across both.
+**A marketing site in front of an app.** One deployment, two rendering needs. SSR the public routes with server-resolved head and hero copy; let the authenticated routes gate on a loader.
 
-**A public app with thin marketing pages** — a dashboard with a landing page. Prerender or SSR just the landing routes; the app itself gates.
+**A public app with thin marketing pages.** SSR or prerender just the landing routes; the app itself gates.
 
-**Docs sites.** Almost always the strongest case for SSR: heavily indexed, frequently corrected, and the corrections are exactly what you want crawlers to pick up.
+**Docs sites.** The strongest case for SSR — heavily indexed and frequently corrected — and also the strongest case for putting real work into the pure-catalog path, because the indexed body copy is the product.
 
 ## What to do with this
 
 1. Decide public vs. app **before** opening an `ssr/` track.
-2. Public → SSR. Read the matching `ssr/` document and follow it as written.
+2. Public → SSR, and resolve every crawler-visible string through the pure catalog function. The reactive primitives will not do it for you.
 3. App → skip `ssr/` entirely. Gate on `ready` and move on.
-4. Static-only constraint → prerender per locale, and be explicit with whoever owns the site that indexed translations are as fresh as the last build.
+4. Static-only constraint → prerender per locale; indexed head copy is as fresh as the last build.
+5. **Verify in a real browser, never with `curl`.** Because body copy translates after hydration, `curl | grep` shows base language on a correctly working page *and* on a badly broken one. See [verify.md](../verify.md).
 
-`scan` reports the deployment posture it detects, including whether the site is prerendered. It reports what is there — it cannot tell you whether crawlers matter for your product. That part is yours.
+`scan` reports the deployment posture it detects, including whether the site is prerendered. It cannot tell you whether crawlers matter for your product. That part is yours.

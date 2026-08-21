@@ -100,6 +100,21 @@ Not working-tree issues — these are shipped to users today.
 | D | ~~Svelte declaration header omits `Phrase`/`DontTranslate`~~ | **RESOLVED in 3.5.0** | Header now lists all three and states *why* `Phrase` exists (agreement/pluralization), plus the `%name%` vs `{name}` split. This was the highest-value fix: the declaration header is what IDE hover surfaces unprompted. |
 | E | `langsys-js-react@0.4.3` `<Phrase>` example is correct (`%n%`) with rationale | React `dist/index.d.ts` | **Reference wording** — B and C are a verbatim port, not a rewrite. |
 
+### SSR seeding internals — `langsys-js-typescript@0.6.5`
+
+Read directly from the published `dist/index.mjs`. These govern every JS SSR track:
+
+| Behavior | Line | Consequence for the skill |
+|---|---|---|
+| `if (initialTranslations2 && initialTranslationsLocale)` — no `else`, no warning | `:783` | Passing one alone is a **silent** no-op. The only log sits *inside* the success branch, so `debug: true` is the sole way to see it |
+| `initialTranslations2[cat]["__category__"] = cat`, plus injected `__uncategorized__` | `:784-791` | `init()` **mutates the object you pass it** — which is the framework's server payload. Never pass something frozen or shared |
+| `var LangsysApp = new LangsysAppClass()` | `:991` | Hard module singleton — the root cause of the SSR data race |
+| `sTranslations`, `currentlyLoadedLocale` as module-level signals | `:255-256` | Catalog state is process-global, not request-scoped |
+| `Translations` constructor subscribes to both globals | `:409-410` | **Constructing your own instance does not isolate it.** There is no request-scoped translator |
+| `!force && locale === this.locale && Math.abs(lastLoaded[locale] - now) < 60` | `:598` | The seeded no-refetch guarantee is a **60-second window**, not permanent |
+
+Reported to the base-SDK and Svelte agents as a feature request: a request-scoped translator factory — a pure closure over one request's catalog with no module-global writes — would make genuine SSR of body copy possible and make the SSR README's SEO claim true rather than aspirational.
+
 ## Consequences for the skill
 
 - **PHP track (task #17) must not open with `composer require`.** It teaches the manual `autoload.php` install until defect A is resolved, and `doctor` checks for the package rather than assuming Composer resolution succeeds.
@@ -166,6 +181,16 @@ Checks and fixes that produce no signal because they never ran, or because their
 | 7 | `requires_intl` **inferred** from "does the template contain ICU syntax" — wrong in both directions (recovery cases need no intl; a plain `{id}` does), 4 of 19 wrong, and not the four anyone would guess | PHP agent, generating the fixture twice — with and without the extension — and taking the flag from the diff |
 | 8 | A translatable-attribute list written from **memory** rather than from `TRANSLATABLE_ATTRIBUTES`: invented `summary`, omitted nine real entries, and missed `value` entirely | Vue agent's report, checked against the published constant |
 | 9 | ~~`## 0.2.0 - unreleased` shipped in the published Vue tarball~~ (fixed in 0.2.1; `0.1.2` also documented). Not a bad value — a value with a **correctness window**: right when written, wrong the instant it shipped, with nothing watching the boundary | me, reading the tarball; **cause corrected by the Vue agent** — see below |
+| 10 | **The SSR tracks promised crawler-visible translated body copy that the SDK cannot produce.** `t()`/`$t`/`<Phrase>`/`<Translate>` render the **base language** during SSR in all three JS frameworks, because `init()` runs in a client-only hook. The docs said the opposite, the claim was checkable only in a browser, and every `curl`-shaped check agreed with the false version | SvelteKit reference agent, **measuring production HTML** — 5,031 chars of visible SSR body text, 100% English, on a page serving Italian |
+
+Instance 10 is the largest single correction in this file's history, and the one with the most transferable shape. Four documents asserted that SSR puts current translations in crawlable HTML. That is true for **PHP only** — `translatePage()` post-processes finished HTML server-side. In React, Vue and Svelte the catalog lives in module globals that only `init()` writes, and `init()` runs in `useEffect` / `onMounted` / `onMount`, none of which execute during server rendering. The server therefore emits base-language body copy under **both** SSR and prerendering, and the client swaps it after hydration.
+
+The reason it survived so long is the interesting part: **the wrong claim and the right one look identical to every cheap check.** `curl | grep` shows base-language text on a correctly working page *and* on a totally broken one, so the tooling that would normally catch this agrees with the error. Only a browser — or, as here, a measurement of production HTML byte counts — can tell them apart. Filed here rather than as a plain doc bug because the failure is the table's shape, not its wording: it had no row for "checkable only under hydration."
+
+Two corollaries now in the skill:
+
+- **`init()` must not run during SSR, and the usual reason given is wrong.** It is not `document is not defined`. Server-side init *works*, then races: `LangsysApp` is a module singleton, so one process serving concurrent requests lets an in-flight `/de` render observe `/it`'s catalog. A `typeof window` guard does not make it safe. There is no request-scoped translator in the SDK.
+- **The catalog is already server-side**, because seeding requires fetching it. Resolving a phrase from it directly is a pure lookup with none of the singleton's hazards, and is the only way to put translated text in server HTML in a JS framework. The skill now prescribes that for head, SEO fields and indexed copy.
 
 Instance 7 generalises cleanly on its own: **when a property is expensive to reason about and cheap to observe, observe it.** The inferred flag would have shipped skip conditions that silently did not run on hosts without `intl`, while appearing to cover them.
 

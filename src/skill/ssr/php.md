@@ -5,9 +5,12 @@ PHP renders on the server by definition, so there is no hydration problem to sol
 Read [integrate/php.md](../integrate/php.md) first.
 
 > **Decide the rendering mode first: [core/rendering-mode.md](../core/rendering-mode.md).**
-> Public site → SSR, because only SSR puts *current* translations in the HTML a crawler
-> fetches; a prerendered page serves a build-time snapshot that humans never see as stale.
-> App behind a login → client-only with a ready gate, and skip this track entirely.
+> Public site → SSR; app behind a login → client-only with a ready gate, and skip this track.
+>
+> **PHP is the one SDK where SSR genuinely emits translated body copy.** `translatePage()`
+> post-processes finished HTML on the server, so there is no hydration swap and no
+> base-language server render. The caveats in `core/rendering-mode.md` about JS frameworks
+> do not apply here — but the caching section below governs how *current* that text is.
 
 ## The shape
 

@@ -2,6 +2,16 @@
 
 **The integration is not done until this passes.** Every check here targets a failure that is invisible in the base language.
 
+> ## Verify in a real browser. `curl` cannot do it.
+>
+> In React, Vue and Svelte the catalog is populated by `init()` in a client-only hook, so **body copy translates after hydration**. `curl | grep` therefore shows the base language on a page that is working perfectly — *and shows exactly the same thing on one that is completely broken*. It cannot distinguish them.
+>
+> This has cost a production team an afternoon. They shipped nav labels rendered as `{child.label}` instead of `t(child.label, 'Main Menu')`; every `curl` check looked identical to the working case.
+>
+> A view-source check is valid for exactly two things: the **server-resolved head** (see [core/rendering-mode.md](./core/rendering-mode.md)), and confirming no API key is in the bundle. For everything else, open a browser.
+>
+> PHP is the exception — `translatePage()` translates server-side, so its output *is* checkable from the response body.
+
 ## 1. Static — build and lint
 
 ```bash
@@ -76,8 +86,12 @@ Click through the main flows so phrases register. Anything never rendered never 
 
 - [ ] **Read-only key** in production config
 - [ ] `debug: false`
-- [ ] SSR seeding in place if the app server-renders (`initialTranslations` + `initialTranslationsLocale`)
+- [ ] SSR seeding in place if the app server-renders (`initialTranslations` + `initialTranslationsLocale` — **both**, or it silently no-ops)
 - [ ] No duplicate translation fetch on hydration (check the network tab)
+- [ ] `init()` never runs during server rendering — it races module globals across concurrent requests
+- [ ] Crawler-visible text resolved from the catalog, not from `t()` / `$t`
+- [ ] Offered locales deduplicated by URL token before rendering `hreflang`
+- [ ] If the SDK is a `link:`/workspace dependency, the **deploying machine's** build is the one that ships — pin or verify it
 
 ## 5. Report
 
@@ -100,5 +114,8 @@ State plainly:
 | Catalog full of near-duplicates | Pre-formatted phrase strings |
 | Text flashes untranslated on load | Missing SSR seeding |
 | Phrase registered under the wrong name | Reversed `t()` arguments |
+| Every string renders as its category name | Stale SDK build inlined at deploy time |
+| Every page blank after adding a locale | Duplicate `hreflang` keys — two locales sharing one URL token |
+| Server HTML is base language | Expected in JS frameworks — not a defect. Verify in a browser |
 
 Full detail: [troubleshooting.md](./troubleshooting.md).
