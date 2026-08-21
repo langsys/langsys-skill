@@ -1,7 +1,7 @@
 {
   "name": "langsys-skill",
   "version": "0.1.1",
-  "description": "Portable agent skill for integrating and migrating projects onto the Langsys SDKs — works in Claude Code, Codex, Gemini CLI and Cursor.",
+  "description": "Portable agent skill for integrating and migrating projects onto the Langsys SDKs \u2014 works in Claude Code, Codex, Gemini CLI and Cursor.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -22,7 +22,8 @@
     "scan": "node src/bin/scan.mjs",
     "doctor": "node src/bin/doctor.mjs",
     "lint": "ast-grep scan -c src/lint/sgconfig.yml",
-    "test": "node --test test/run.mjs"
+    "test": "node --test test/run.mjs",
+    "lint:phantom": "node src/lint/phantom-helpers.mjs node_modules/langsys-js-typescript/dist/index.d.ts"
   },
   "keywords": [
     "langsys",

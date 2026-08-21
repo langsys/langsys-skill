@@ -114,6 +114,46 @@ Read directly from the published `dist/index.mjs`. These govern every JS SSR tra
 | `!force && locale === this.locale && Math.abs(lastLoaded[locale] - now) < 60` | `:598` | The seeded no-refetch guarantee is a **60-second window**, not permanent |
 
 Reported to the base-SDK and Svelte agents as a feature request: a request-scoped translator factory — a pure closure over one request's catalog with no module-global writes — would make genuine SSR of body copy possible and make the SSR README's SEO claim true rather than aspirational.
+### Locale resolution — measured by execution, not by reading
+
+Reported by the Svelte SDK agent, then re-verified here by **running** `langsys-js-typescript@0.6.5` rather than reading it:
+
+```
+canonicalizeLocale('en_us')                     ->  'en-US'
+canonicalizeLocale('zh-tw')                     ->  'zh-TW'
+canonicalizeLocale('es')                        ->  'es'      NOT widened
+
+detectPreferredLocale('es',    ['es-CR','it-IT','fr-FR','en-US'])  ->  'es-CR'
+detectPreferredLocale('fr-CA', [...])                              ->  'fr-FR'
+detectPreferredLocale('de',    [...])                              ->  'de'      not offered
+detectPreferredLocale('!!!',   [...])                              ->  '!!!'     not a locale
+detectPreferredLocale(null,    [...])                              ->  'en-US'
+```
+
+Four consequences, three of which contradicted what the skill said:
+
+1. **`canonicalizeLocale` does not widen.** A bare `es` stays `es` — a valid BCP 47 tag that **422s** on a project whose Spanish target is `es-CR`. Only `detectPreferredLocale(header, supported)` resolves language→region. The skill now says so in invariant 9.
+2. **On no match the helper returns the visitor's own tag** (`:932`, `return canonicalizeLocale(userLocales[0])`), not `false` and not the base locale. The skill had this right; the SSR tracks were not applying it.
+3. **The input is not validated** — `'!!!'` comes back as `'!!!'`. Nothing in the signature suggests this.
+4. **`false` is close to unreachable.** `null`, `undefined` and `''` all produced a locale. So the widespread `detectPreferredLocale(h, s) || BASE` idiom guards a branch that essentially never fires, while the branch that does fire — a truthy, unsupported tag — passes straight through.
+
+**The `supportedLocales` trap.** Building that argument from `LangsysApp.getLocalesFlat()` passes the ~573-entry **global CLDR** list, not the project's locales. Nearly any `Accept-Language` then "matches", so the helper confidently returns e.g. `de-de` and every catalog request 422s with *"The locale provided is not a base or target locale for this project"* — logged **only** under `debug: true`. Empty catalog, clean console. This was a live defect in the Svelte SDK's own README, since fixed.
+
+**Data that exists on the wire and is discarded.** `GET /api/authorize-project/{id}` returns `base_locale`, `target_locales` and a `default_locales` map (`{es: "es-CR", …}`), but `init()` reads only `key_type` from that response (`dist/index.mjs:775-781`) and ignores the rest. Everything needed to resolve `es` → `es-CR` automatically is already fetched. Raised with the base-SDK agent.
+
+> **Two routes, and they resolve locales differently.** The Svelte agent found that the legacy `GET /api/projects/{id}/translations?locale=…` resolves loosely (a bare `es` returns the `es-CR` catalog, 200) while the current `GET /api/translations?project_id=…&locale=…` — the one the SDK itself calls, `dist:122` — matches literally and 422s. A guide that hand-fetches via the legacy route therefore produces a **populated server seed and an empty client catalog**: every string renders as its base phrase. Checked: all three of this skill's JS tracks already emit the current route, so the seam bug does not apply here. Recording it because the failure only appears where the two fetches must agree, which no single-request test exercises.
+
+### Three phantom helpers, and the guard that now catches them
+
+Across three consecutive commits the SSR tracks called locale helpers that **do not exist**: `resolveLocale` (Next.js), `negotiate` (SvelteKit), and `resolveLocale` again — the last two introduced by *me*, in the commits that fixed the previous one. Nothing caught them: markdown does not typecheck, and every name read as plausible. An agent following those tracks writes code that cannot run.
+
+`src/lint/phantom-helpers.mjs` now flags domain-shaped identifiers that are neither defined in the sample nor exported by the SDK, with the allowlist read from the pinned `dist/index.d.ts`. Two defects in the guard itself surfaced on first run and are worth recording, because both are the same family:
+
+- It scanned **inside comments**, so prose warning *against* a helper counted as calling it.
+- Its allowlist came from the `export { … }` line only, which omits class **methods** — so it reported `detectPreferredLocale` and `getLocalesFlat`, the SDK's own API, as invented.
+
+Its blind spot is stated in the source and asserted in `test/run.mjs`: the domain filter that keeps it quiet is also what makes it miss `negotiate`, a plausible name containing no domain word. Widening it reproduces the unusably noisy version. **A documented gap beats a guard nobody runs — but only if the gap is asserted, so it cannot quietly become a claimed pass.**
+
 ### The replacement fix was itself defective — caught before publish
 
 My first correction prescribed a four-line pure lookup, `catalog[cat]?.[phrase] || phrase`, into four SSR tracks. The base-SDK agent rejected it against `buildTFn`, and the published dist confirms all three faults:

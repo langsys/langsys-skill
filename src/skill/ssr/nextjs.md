@@ -139,11 +139,33 @@ export default function App({ Component, pageProps }: AppProps) {
 ```
 
 ```ts
+import { LangsysApp } from 'langsys-js-react';
+
+// YOUR PROJECT'S locales — not getLocalesFlat(), which is the global CLDR list.
+const OFFERED = ['en-US', 'es-CR', 'fr-FR'];
+const BASE = 'en-US';
+
 export const getServerSideProps: GetServerSideProps = async ({ req }) => {
-    const locale = resolveLocale(req.headers['accept-language']);
+    // Resolves language -> region: 'es' becomes 'es-CR', 'fr-CA' becomes 'fr-FR'.
+    const detected = LangsysApp.detectPreferredLocale(req.headers['accept-language'], OFFERED);
+    // MUST be validated: on no match it returns the visitor's own tag unchanged.
+    const locale = detected && OFFERED.includes(detected) ? detected : BASE;
+
     return { props: { locale, initialTranslations: await fetchTranslations(locale) } };
 };
 ```
+
+**Validate `detectPreferredLocale`'s output — always.** Verified by executing `langsys-js-typescript@0.6.5`:
+
+```
+detectPreferredLocale('es',  OFFERED)  ->  'es-CR'   resolved
+detectPreferredLocale('de',  OFFERED)  ->  'de'      NOT in your list
+detectPreferredLocale('!!!', OFFERED)  ->  '!!!'     not even a locale
+```
+
+On no match it returns the visitor's tag unchanged — not `false`, not your base locale — and it does not validate its input. Storing that gives you a locale with no catalog: the catalog request 422s with *"The locale provided is not a base or target locale for this project"*, and `getTranslations()` logs that **only** under `debug: true`. Empty catalog, clean console.
+
+> **`supportedLocales` must be your project's locale list.** Built from `LangsysApp.getLocalesFlat()` it is the ~573-entry global CLDR list, against which nearly any `Accept-Language` "matches" — so the helper confidently returns `de-de` and every catalog fetch 422s.
 
 Return them from **every** page that renders translated content, or use `getInitialProps` in `_app` to do it once.
 
@@ -210,11 +232,15 @@ Use `makeCatalogT(catalog, locale)` for `<title>`, `<meta name="description">`, 
 | Body copy is base language in `curl` output | **Expected** — `t()` is inert during SSR. Verify in a browser |
 | Head/meta is base language | Using `t()` for head fields; use the pure catalog lookup |
 | Wrong locale served under load | `init()` called during SSR — module globals raced across requests |
+| Catalog request 422s: "not a base or target locale" | A bare `es` where the project offers `es-CR`, or `supportedLocales` built from the global CLDR list |
+| Empty catalog, nothing in the console | The 422 above — logged **only** under `debug: true` |
 
 ## Checklist
 
 - [ ] Server fetch uses **unprefixed** env vars
 - [ ] Locale resolved **once** on the server and passed down
+- [ ] `supportedLocales` is the **project's** locale list, not `getLocalesFlat()`
+- [ ] `detectPreferredLocale`'s result validated against that list before use
 - [ ] Both `initialTranslations` and `initialTranslationsLocale` passed
 - [ ] Locale fallback uses the explicit guard, not `|| 'en-US'`
 - [ ] Rendering **not** gated on `ready` when seeded

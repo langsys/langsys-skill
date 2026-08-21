@@ -1138,3 +1138,47 @@ test('doctor reports MCP scope from config, distinguishing user from project', (
     assert.match(absent, /claude mcp add --scope=user/, 'absent must give the command');
     assert.match(absent, /read-only/, 'and must say two keys, not one');
 });
+
+test('phantom-helpers: catches invented SDK helpers, stays quiet on real ones', async () => {
+    // Three times in three commits a track called a locale helper that does not
+    // exist. This guard exists for that; these are the actual regressions.
+    const { phantomsIn, sdkExports } = await import('../src/lint/phantom-helpers.mjs');
+
+    const known = new Set(['canonicalizeLocale', 'interpolate', 'detectPreferredLocale', 'getLocalesFlat', 't']);
+
+    // POSITIVE — the three that shipped.
+    assert.deepEqual(phantomsIn(`const l = resolveLocale(header);`, known), ['resolveLocale'],
+        'resolveLocale shipped twice and must be caught');
+    assert.deepEqual(phantomsIn(`const l = negotiate(header, OFFERED);`, known), [],
+        'negotiate is not domain-shaped — documents the guard\'s real blind spot');
+    assert.deepEqual(phantomsIn(`const x = pickTranslationFor(u);`, known), ['pickTranslationFor'],
+        'domain-shaped invented helper');
+
+    // NEGATIVE — the ones that would make the guard worse than useless.
+    assert.deepEqual(phantomsIn(`import { canonicalizeLocale } from 'langsys-js-typescript';
+canonicalizeLocale('en_us');`, known), [], 'real SDK export must not fire');
+    assert.deepEqual(phantomsIn(`LangsysApp.detectPreferredLocale(h, S);`, known), [],
+        'method call on an object is not a bare call');
+    assert.deepEqual(phantomsIn(`const resolveLocale = (h) => h;\nresolveLocale('x');`, known), [],
+        'defined in the same sample is fine');
+    assert.deepEqual(phantomsIn(`// do not use getLocalesFlat() here\nconst a = 1;`, known), [],
+        'comments describe, they do not call');
+    assert.deepEqual(phantomsIn(`/* resolveLocale() is wrong */\nconst a = 1;`, known), [],
+        'block comments too');
+    assert.deepEqual(phantomsIn(`useEffect(() => {}, []);\nsetReady(true);`, known), [],
+        'non-domain identifiers are out of scope by design');
+
+    // The allowlist must come from the artifact, and must include class METHODS.
+    const dts = join(root, 'node_modules/langsys-js-typescript/dist/index.d.ts');
+    if (existsSync(dts)) {
+        const real = sdkExports(dts);
+        assert.ok(real.has('detectPreferredLocale'),
+            'methods are not in the export line — an allowlist without them flags the real API');
+    }
+});
+
+test('phantom-helpers: an unreadable allowlist must fail, not pass quietly', async () => {
+    const { sdkExports } = await import('../src/lint/phantom-helpers.mjs');
+    assert.equal(sdkExports('/nonexistent/index.d.ts'), null,
+        'must return null so the caller can exit non-zero rather than report clean');
+});

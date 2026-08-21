@@ -44,17 +44,26 @@ export const entries = () => [{ lang: 'en' }, { lang: 'es' }, { lang: 'fr' }];
 ```ts
 // src/routes/[[lang=lang]]/+layout.server.ts
 import type { LayoutServerLoad } from './$types';
+import { LangsysApp } from 'langsys-js-svelte';
 import { LANGSYS_PROJECT_ID, LANGSYS_API_KEY } from '$env/static/private';
 
-const OFFERED = ['en-US', 'es-ES', 'fr-FR'];
+// YOUR PROJECT'S locales. Not getLocalesFlat() — see the warning below.
+const OFFERED = ['en-US', 'es-CR', 'fr-FR'];
 const BASE = 'en-US';
-const isOfferable = (l?: string | null) => !!l && OFFERED.includes(l);
+const isOfferable = (l?: string | null | false) => !!l && OFFERED.includes(l);
 
 export const load: LayoutServerLoad = async ({ params, cookies, request, fetch }) => {
-    // Highest precedence first. Every non-URL source must pass isOfferable().
+    // detectPreferredLocale does the language -> region resolution: with
+    // OFFERED above, 'es' becomes 'es-CR' and 'fr-CA' becomes 'fr-FR'.
+    const negotiated = LangsysApp.detectPreferredLocale(
+        request.headers.get('accept-language'),
+        OFFERED,
+    );
+
+    // Highest precedence first. EVERY source is filtered through isOfferable,
+    // including the negotiated one — see the warning below for why.
     const locale =
-        [params.lang, cookies.get('locale'), negotiate(request.headers.get('accept-language'), OFFERED)]
-            .find(isOfferable) ?? BASE;
+        [params.lang, cookies.get('locale'), negotiated].find(isOfferable) ?? BASE;
 
     const res = await fetch(
         `https://api.langsys.dev/api/translations?project_id=${LANGSYS_PROJECT_ID}&locale=${locale}`,
@@ -66,7 +75,20 @@ export const load: LayoutServerLoad = async ({ params, cookies, request, fetch }
 };
 ```
 
-**Why `isOfferable` and not `|| BASE`.** A stale cookie or a profile setting can name a locale that is well-formed, present, and no longer offered by this project. `||` does not reject it — the value is truthy. This is a real production failure, not a theoretical one.
+**Why every source is filtered, including `detectPreferredLocale`'s own output.** Verified by executing `langsys-js-typescript@0.6.5`:
+
+```
+detectPreferredLocale('es',    ['es-CR','it-IT','fr-FR','en-US'])  ->  'es-CR'   resolved
+detectPreferredLocale('fr-CA', ['es-CR','it-IT','fr-FR','en-US'])  ->  'fr-FR'   resolved
+detectPreferredLocale('de',    ['es-CR','it-IT','fr-FR','en-US'])  ->  'de'      NOT in your list
+detectPreferredLocale('!!!',   ['es-CR','it-IT','fr-FR','en-US'])  ->  '!!!'     not even a locale
+```
+
+**On no match it returns the visitor's own tag unchanged** — not `false`, not your base locale — and it does not validate the input, so a malformed header comes straight back out. Store that and you have a locale with no catalog. A stale cookie is the same shape: well-formed, truthy, and no longer offered. `|| BASE` cannot catch any of these, because the value is present.
+
+> **`supportedLocales` must be YOUR PROJECT's locales.** Building it from `LangsysApp.getLocalesFlat()` passes the ~573-entry global CLDR list, against which nearly any `Accept-Language` "matches" — so the helper confidently returns `de-de`, and the catalog request 422s with an empty result. This was a live defect in the Svelte SDK's own README.
+
+**Do not widen by hand with `canonicalizeLocale`.** It normalizes case and separators only — `'en_us'` → `'en-US'`, `'zh-tw'` → `'zh-TW'` — and leaves `'es'` as `'es'`. It will not turn `es` into `es-CR`. Only `detectPreferredLocale(header, OFFERED)` does that resolution.
 
 `$env/static/private` keeps the key out of the client bundle entirely. Use it, not `PUBLIC_`, for the server fetch.
 
@@ -245,6 +267,8 @@ Same shape: resolve locale, fetch the catalog before rendering, resolve crawler-
 | A phrase renders but never appears in the Translation Manager | It renders only server-side; `ct` does not harvest missing tokens |
 | Seeding appears to do nothing | Only one of `initialTranslations` / `initialTranslationsLocale` passed — fails silently |
 | Wrong locale served under load | `init()` called during SSR — module globals raced across requests |
+| Catalog request 422s: "not a base or target locale" | A bare `es` where the project offers `es-CR`, or `supportedLocales` built from the global CLDR list |
+| Empty catalog, nothing in the console | The 422 above — `getTranslations()` logs it **only** under `debug: true` |
 | Two catalog requests per load | Seeding missing, or more than 60 s between init and locale settle |
 | Every page blank after adding a locale | Duplicate `hreflang` keys — dedupe by URL token |
 | Every string renders as its category name | Stale SDK build inlined at deploy time — pin or verify `link:`/workspace deps |
@@ -255,6 +279,8 @@ Same shape: resolve locale, fetch the catalog before rendering, resolve crawler-
 
 - [ ] Server fetch uses `$env/static/private`
 - [ ] Locale resolved once server-side, through a precedence chain with an offerability check
+- [ ] `supportedLocales` is the **project's** locale list, not `getLocalesFlat()`
+- [ ] `detectPreferredLocale`'s own result is validated against that list before use
 - [ ] `+layout.ts` carries flags only, not the catalog
 - [ ] Both `initialTranslations` and `initialTranslationsLocale` passed
 - [ ] `init()` inside `onMount`, never during SSR

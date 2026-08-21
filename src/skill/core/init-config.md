@@ -140,3 +140,21 @@ So `detectPreferredLocale(header, supported) || 'en-US'` does **not** cover the 
 const detected = LangsysApp.detectPreferredLocale(header, supported);
 const locale = detected && supported.includes(detected) ? detected : 'en-US';
 ```
+
+**Measured against `langsys-js-typescript@0.6.5`**, by executing it rather than reading it:
+
+```
+detectPreferredLocale('es',    ['es-CR','it-IT','fr-FR','en-US'])  ->  'es-CR'
+detectPreferredLocale('fr-CA', ['es-CR','it-IT','fr-FR','en-US'])  ->  'fr-FR'
+detectPreferredLocale('de',    ['es-CR','it-IT','fr-FR','en-US'])  ->  'de'     <- not yours
+detectPreferredLocale('!!!',   ['es-CR','it-IT','fr-FR','en-US'])  ->  '!!!'    <- not a locale
+detectPreferredLocale(null,    ['es-CR','it-IT','fr-FR','en-US'])  ->  'en-US'
+```
+
+Two things this shows that reading the signature does not:
+
+- **The input is not validated.** Garbage comes straight back out as a "locale".
+- **`false` is rare in practice.** A missing, null or empty header still produced a locale here, so code written to lean on `|| BASE` catching the undetectable case is mostly guarding a branch that does not fire — while the branch that *does* fire, an unsupported-but-truthy tag, sails through.
+
+> **`supportedLocales` must be YOUR PROJECT's locales.** Building it from `LangsysApp.getLocalesFlat()` passes the ~573-entry **global CLDR** list, against which nearly any `Accept-Language` "matches" — so the helper returns something like `de-de` with full confidence and every catalog request 422s with *"The locale provided is not a base or target locale for this project"*. That failure is logged **only** under `debug: true`: empty catalog, clean console. This was a live defect in the Svelte SDK's own README.
+
