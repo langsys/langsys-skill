@@ -4,6 +4,43 @@ Symptom → cause → fix. Most Langsys problems look identical in the base lang
 
 ---
 
+## A `<Translate>` block is stuck on its loading text
+
+The content resolved, the network tab shows the data, and the block still reads `Loading…`.
+
+**Cause:** `<Translate>` wrapping an async boundary — `{#await}` or equivalent. The block is
+tokenized **once, at mount**, when the pending branch is what is rendered. On the single-token
+path the SDK then assigns `element.innerText`, which replaces every child of the host **including
+the anchor nodes the framework uses to find that block**. The framework's later update targets
+nodes that are no longer in the document, so the resolved content never appears.
+
+It is not a translation failure and no amount of catalog work fixes it. Two further consequences
+worth checking while you are here:
+
+- the **placeholder** is what got registered — look for `Loading…` in your Translation Manager
+- **every** such block collapses onto **one** content block, since they all tokenize to the same
+  single token
+
+**Fix:** move the async boundary outside the `<Translate>`. Wrap the resolved content, not the
+awaiting wrapper:
+
+```svelte
+<!-- wrong — the block is tokenized while pending, and frozen by the write -->
+<Translate category="Docs">
+  {#await load()}Loading…{:then page}{page.body}{/await}
+</Translate>
+
+<!-- right — nothing is tokenized until there is real content -->
+{#await load()}
+  Loading…
+{:then page}
+  <Translate category="Docs">{page.body}</Translate>
+{/await}
+```
+
+The second form still needs the content itself to be static prose — see
+[invariants.md §6](./core/invariants.md).
+
 ## Nothing translates at all
 
 **Check init actually succeeded.** The most common cause, and it is silent unless you look:

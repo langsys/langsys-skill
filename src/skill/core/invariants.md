@@ -165,6 +165,17 @@ Nothing whose token array depends on runtime data: no interpolation, no `{#each}
 `{#await}`, no interpolated values on translatable attributes. Interpolation belongs in
 `t('Hello, {name}!', 'Cat', { name })`, where the placeholder stays literal in the key.
 
+**`{#await}` is the worst case, and it is not a keying bug.** The server renders synchronously and
+cannot await, so it emits the **pending branch every time** — even for an already-resolved promise.
+The client's first render is pending too. Tokenization happens once, at mount, so:
+
+- the **loading placeholder** is what gets registered; the real content never reaches the catalog
+- **every `{#await}` sharing a pending string collapses onto one content block**
+- and on the single-token path the SDK writes `innerText`, which replaces the framework's block
+  anchors — so the resolved content **never renders at all.** The block reads `loading` forever.
+
+**Never put `{#await}`, or any async boundary, inside `<Translate>`.**
+
 > **Do not verify this by counting text nodes.** Measured: an `{#if}` wrapping an *element*
 > branch leaves the direct text-node count **unchanged at 2** while the token array goes from 3
 > to 2 — the lost token was inside the element the branch removed. Node counts are the intuitive
