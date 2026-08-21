@@ -1027,6 +1027,22 @@ const TPL = \`<div>\${x}</div>\`;
 `,
     });
     assert.deepEqual(scan(dir).contentModules, []);
+
+    // CONTROL. Every absence assertion needs a paired presence, in the SAME
+    // test — otherwise it passes just as happily when the detector is broken,
+    // never runs, or is deleted. The pairing lived in a neighbouring test,
+    // which is a pairing that survives only as long as nobody edits that test.
+    const withProse = project({ svelte: '^5.0.0' }, {
+        'src/copy.ts': `export const COPY = {
+  a: 'Welcome to your dashboard',
+  b: 'Choose a plan that fits your team',
+  c: 'Your trial ends in three days',
+  d: 'Contact support for help with billing',
+};
+`,
+    });
+    assert.ok(scan(withProse).contentModules.length >= 1,
+        'control: the same scan must detect prose, or the absence above means nothing');
 });
 
 test('scan flags a prerendered site before routing it to the SSR track', () => {

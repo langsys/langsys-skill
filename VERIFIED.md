@@ -205,6 +205,40 @@ Two things worth keeping from this:
 - **The same failure signature, one level up.** Instance 10 was a claim that rendered as plausible text; so was its fix. A dropped interpolation does not throw — it produces a sentence with a brace in it, on the subset of strings that carry data, only under SSR. It would have shipped into four tracks and been found by users.
 - **The omission that must be documented, not inferred.** A pure translator cannot harvest missing tokens without a process-global flush queue, which is the coupling it exists to remove. So **server-only phrases never self-register even though they render every request**. That is a deliberate trade, and the skill now states it in `verify.md` §3d rather than leaving it to be discovered.
 
+### Every absence assertion needs a paired presence — in the same test
+
+Contributed by the React SDK owner while seeding the cross-SDK conformance fixtures, and it
+prompted an audit of this suite.
+
+Their case: a fixture asserting that an *excluded* `alt` attribute produces no token passes
+trivially if `alt` was never harvested in the first place. **The absence is equally consistent
+with "exclusion works" and "the feature does not exist."** The control — the same `alt` alone
+yielding a token — proves harvesting is possible, which is what makes the absence mean anything.
+It also fails loudly if `alt` ever leaves the attribute list, which would otherwise hollow out the
+exclusion case while leaving it green.
+
+> **Half the interesting properties in this domain are exclusions** — `translate="no"`,
+> `data-notrans`, phrase markers, excluded subtrees, "this lint rule must not fire" — **and every
+> one of them is vulnerable to passing for the wrong reason.**
+
+**Audit of this suite: every absence assertion was paired, but three pairings were implicit** —
+the presence control lived in a neighbouring test rather than in the same one. That is a pairing
+which survives exactly as long as nobody edits the neighbour, and nothing links them. The weakest
+(`scan` reporting no content modules for a file of paths, class lists and identifiers) now carries
+its control inline: the same `scan` must detect real prose in the same test, or the absence proves
+nothing.
+
+The two already-correct patterns are worth naming, because they are what the rule looks like when
+it is being followed:
+
+- Asserting `doesNotMatch(out, /…/)` on a tool's output **alongside** a `match` proving the tool
+  ran and reached that check. Without it, a crash reads as a pass.
+- Asserting no duplicate rule ids **alongside** `ids.length >= 22`. Without it, a broken id
+  extractor yields an empty list and "no duplicates" is vacuously true.
+
+This is §10's absence pattern arriving in test design rather than in a check — the same shape,
+one level up. A test is a check, and a check that produces no signal reads as a pass.
+
 ### Agreement is not evidence when the category is wrong
 
 Contributed by the React SDK owner, correcting a worse version of the same lesson that I had
