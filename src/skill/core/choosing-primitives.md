@@ -40,6 +40,37 @@ Choose `t()`, `<Phrase>`, or `<Translate>` based on the table above.
 
 Wrapping that in a `<Translate>` with no other content is wrong — it manufactures a content block that has no reason to exist.
 
+> ## Never wrap a single element in `<Translate>` — it destroys the element
+>
+> **This is a live defect in the shipped SDK, not a style preference.** Verified against
+> `langsys-js-typescript@0.6.5`, `dist/index.mjs:1408` and `:1427`.
+>
+> When a `<Translate>` subtree yields exactly **one** token, the SDK takes a fast path that assigns
+> `element.innerText` — which **replaces every child of the host**. The premise behind it is that
+> one token means one text node. That is false in two independent ways:
+>
+> ```jsx
+> <Translate><img alt="Company logo" /></Translate>       // tokens: ["Company logo"]
+> <Translate><input placeholder="Your name" /></Translate> // tokens: ["Your name"]
+> ```
+>
+> A translatable **attribute** produces a token with **no text node anywhere in the subtree**, and
+> the write then replaces the element that carried it. **The `<img>` is gone. The `<input>` is
+> gone**, replaced by the translated string as bare text. No framework required — this reproduces
+> in plain DOM.
+>
+> The second way: in a framework, the same write removes the anchor nodes the framework uses to
+> locate its own content, so later updates target nodes that are no longer in the document. See
+> [invariants.md §6](./invariants.md).
+>
+> And it does not settle. The locale guard is only updated on the multi-token path, so **the
+> destructive write re-runs on every locale change.**
+>
+> **What to do instead:** translate the attribute where it lives. `<Translate>` is for a block of
+> markup with several pieces of content in it — that is the case the walker is written for.
+
+
+
 ### Decision 2 — per text run, only inside a block
 
 Having chosen `<Translate>`, protect individual runs with `<Phrase>`. The block tokenizer skips `<Phrase>` subtrees, so they register as their own single phrase:

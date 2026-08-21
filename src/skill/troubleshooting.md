@@ -4,6 +4,28 @@ Symptom → cause → fix. Most Langsys problems look identical in the base lang
 
 ---
 
+## An element inside `<Translate>` disappeared — image, input, or button gone
+
+The markup had an `<img>`, an `<input>` or a `<button>` in it. After translation the element is
+gone and there is bare text in its place.
+
+**Cause:** the `<Translate>` subtree yielded exactly **one** token, so the SDK took a fast path that
+assigns `element.innerText` — replacing every child of the host. The premise is that one token
+means one text node, and a translatable **attribute** breaks it: `<img alt="Logo">` produces the
+token `["Logo"]` with no text node anywhere, and the write then destroys the element that carried
+it.
+
+```jsx
+<Translate><img alt="Company logo" /></Translate>   // the <img> is replaced by text
+```
+
+Verified against `langsys-js-typescript@0.6.5` (`dist/index.mjs:1408`, `:1427`). It reproduces in
+plain DOM — no framework, no SSR — and the write **re-runs on every locale change**, because the
+locale guard is only updated on the multi-token path.
+
+**Fix:** do not wrap a single element in `<Translate>`. Translate the attribute where it lives.
+`<Translate>` is for a block of markup with several pieces of content in it.
+
 ## A `<Translate>` block is stuck on its loading text
 
 The content resolved, the network tab shows the data, and the block still reads `Loading…`.
