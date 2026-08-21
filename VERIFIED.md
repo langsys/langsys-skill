@@ -116,7 +116,7 @@ Read directly from the published `dist/index.mjs`. These govern every JS SSR tra
 Reported to the base-SDK and Svelte agents as a feature request: a request-scoped translator factory — a pure closure over one request's catalog with no module-global writes — would make genuine SSR of body copy possible and make the SSR README's SEO claim true rather than aspirational.
 ### Locale resolution — measured by execution, not by reading
 
-Reported by the Svelte SDK agent, then re-verified here by **running** `langsys-js-typescript@0.6.5` rather than reading it:
+Reported by the `langsys-js-svelte` agent — **their own finding**, made while verifying the SSR report above, and distinct from the production measurement that prompted it — then re-verified here by **running** `langsys-js-typescript@0.6.5` rather than reading it:
 
 ```
 canonicalizeLocale('en_us')                     ->  'en-US'
@@ -158,7 +158,9 @@ The corrected picture — each of the three is gated differently, which is exact
 | Malformed BCP 47 (`'!!!'`) | **Detected but `debug`-gated.** The value still passes through as a "locale" |
 | Seeding XOR — one parameter without the other | **No diagnostic at all.** Not gated: absent. Under `debug` it shows only as a *missing* line — `Populated sTranslations…` never prints |
 
-Corrected again on a second pass: **there are two ungated channels, not one.** `Logger.error()` is no more gated than `warn()`, and a full `init()` against an unoffered locale emitted **2 `Langsys Warning` + 3 `Langsys Error`** lines with `debug: false`. My probe counted only `console.warn`, so I under-reported the very diagnostic I had just wrongly called absent. The docs now say to search the console for `Langsys`, not for one label.
+Corrected again on a second pass: **there are two ungated channels, not one.** `Logger.error()` is no more gated than `warn()`, and both fire with `debug: false`. My probe counted only `console.warn`, so I under-reported the very diagnostic I had just wrongly called absent.
+
+**Do not record a line count.** Mine came out higher than the Svelte agent's because I stubbed a transport that failed every call while they ran against the live API — the number tracks how many fetches the path makes, not how loud the SDK is. Two measurements disagreeing without either being wrong is the signal that the count was never the fact. The durable instruction is to **search the console for `Langsys`**, which is label-agnostic and count-agnostic.
 
 Three lessons, and the third came from the Svelte agent:
 
@@ -269,7 +271,7 @@ Checks and fixes that produce no signal because they never ran, or because their
 | 7 | `requires_intl` **inferred** from "does the template contain ICU syntax" — wrong in both directions (recovery cases need no intl; a plain `{id}` does), 4 of 19 wrong, and not the four anyone would guess | PHP agent, generating the fixture twice — with and without the extension — and taking the flag from the diff |
 | 8 | A translatable-attribute list written from **memory** rather than from `TRANSLATABLE_ATTRIBUTES`: invented `summary`, omitted nine real entries, and missed `value` entirely | Vue agent's report, checked against the published constant |
 | 9 | ~~`## 0.2.0 - unreleased` shipped in the published Vue tarball~~ (fixed in 0.2.1; `0.1.2` also documented). Not a bad value — a value with a **correctness window**: right when written, wrong the instant it shipped, with nothing watching the boundary | me, reading the tarball; **cause corrected by the Vue agent** — see below |
-| 10 | **The SSR tracks promised crawler-visible translated body copy that the SDK cannot produce.** `t()`/`$t`/`<Phrase>`/`<Translate>` render the **base language** during SSR in all three JS frameworks, because `init()` runs in a client-only hook. The docs said the opposite, the claim was checkable only in a browser, and every `curl`-shaped check agreed with the false version | SvelteKit reference agent, **measuring production HTML** — 5,031 chars of visible SSR body text, 100% English, on a page serving Italian |
+| 10 | **The SSR tracks promised crawler-visible translated body copy that the SDK cannot produce.** `t()`/`$t`/`<Phrase>`/`<Translate>` render the **base language** during SSR in all three JS frameworks, because `init()` runs in a client-only hook. The docs said the opposite, the claim was checkable only in a browser, and every `curl`-shaped check agreed with the false version | The **SvelteKit reference deployment** (`affsite-platform` — 8 production affiliate sites, ~20 locales, `adapter-node` behind a PHP proxy, PM2 `instances: 2`), **measuring its own production HTML**: 5,031 chars of visible SSR body text, 100% English, on a page serving Italian, with the full Italian catalog in the 133 KB hydration payload. Not a reasoned claim — a byte count from a running site |
 
 Instance 10 is the largest single correction in this file's history, and the one with the most transferable shape. Four documents asserted that SSR puts current translations in crawlable HTML. That is true for **PHP only** — `translatePage()` post-processes finished HTML server-side. In React, Vue and Svelte the catalog lives in module globals that only `init()` writes, and `init()` runs in `useEffect` / `onMounted` / `onMount`, none of which execute during server rendering. The server therefore emits base-language body copy under **both** SSR and prerendering, and the client swaps it after hydration.
 
