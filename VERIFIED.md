@@ -179,6 +179,10 @@ Across three consecutive commits the SSR tracks called locale helpers that **do 
 
 Its blind spot is stated in the source and asserted in `test/run.mjs`: the domain filter that keeps it quiet is also what makes it miss `negotiate`, a plausible name containing no domain word. Widening it reproduces the unusably noisy version. **A documented gap beats a guard nobody runs — but only if the gap is asserted, so it cannot quietly become a claimed pass.**
 
+
+**A third defect in the guard, caught by the Svelte agent before it could bite here.** They built the same kind of checker on my warning, and their first run reported **five real re-exported types as invented** — their regex matched `export { … }` but not `export type { … }`, and `langsys-js-svelte` emits all twenty of its type re-exports through the latter. Mine had that bug *and* a worse one: it read only the **last** export statement. The base SDK happens to emit one combined statement, so the parser looked correct; pointed at the Svelte package — seven statements — it recognised 6 names instead of 46 and would have condemned most of the real API.
+
+That is the failure mode that kills a new checker: not missing a fake, but producing a long list of confident findings against working code, which gets it deleted on day one rather than debugged. Their discipline is the transferable part and now applies here — **run a new checker against unmodified inputs first, then inject a known-fake and confirm it fires.** Clean-run-only looks like a working checker in either direction. `test/run.mjs` now asserts both directions and both `.d.ts` shapes.
 ### The replacement fix was itself defective — caught before publish
 
 My first correction prescribed a four-line pure lookup, `catalog[cat]?.[phrase] || phrase`, into four SSR tracks. The base-SDK agent rejected it against `buildTFn`, and the published dist confirms all three faults:

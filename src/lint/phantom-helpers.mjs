@@ -42,17 +42,26 @@ const NON_SDK_REAL = new Set([
 export function sdkExports(dtsPath) {
     if (!existsSync(dtsPath)) return null;
     const src = readFileSync(dtsPath, 'utf8');
-    const line = src.split('\n').reverse().find((l) => l.startsWith('export {'));
-    if (!line) return null;
+    const names = new Set();
 
-    const names = new Set(
-        line
-            .replace(/^export\s*\{/, '')
-            .replace(/\};?\s*$/, '')
-            .split(',')
-            .map((s) => s.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop())
-            .filter(Boolean),
-    );
+    // EVERY export statement, not just the last one, and `export type { … }`
+    // as well as `export { … }`. The base SDK happens to emit a single
+    // combined statement; langsys-js-svelte emits SEVEN, with all twenty of
+    // its type re-exports behind `export type {`. A parser written against
+    // the first package reports most of the second package as invented.
+    for (const m of src.matchAll(/^export\s+(?:type\s+)?\{([^}]*)\}/gm)) {
+        for (const raw of m[1].split(',')) {
+            const name = raw.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop();
+            if (name) names.add(name);
+        }
+    }
+
+    // `export declare const LangsysApp`, `export interface iFoo`, etc.
+    for (const m of src.matchAll(/^export\s+(?:declare\s+)?(?:const|let|var|function|class|interface|type)\s+([A-Za-z_$][\w$]*)/gm)) {
+        names.add(m[1]);
+    }
+
+    if (names.size === 0) return null;
 
     // Class METHODS are not in the export line. `detectPreferredLocale` and
     // `getLocalesFlat` live on LangsysApp, so an allowlist built only from

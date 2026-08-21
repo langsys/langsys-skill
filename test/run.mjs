@@ -1182,3 +1182,48 @@ test('phantom-helpers: an unreadable allowlist must fail, not pass quietly', asy
     assert.equal(sdkExports('/nonexistent/index.d.ts'), null,
         'must return null so the caller can exit non-zero rather than report clean');
 });
+
+test('phantom-helpers: the allowlist parser must handle every export form', async () => {
+    // The Svelte SDK agent hit this and warned me: their guard reported five
+    // REAL re-exported types as invented, because their regex matched
+    // `export { … }` but not `export type { … }`. Mine had the same bug plus a
+    // worse one — it read only the LAST export statement. That is the failure
+    // that gets a new checker deleted rather than debugged: a long list of
+    // confident findings, all wrong, against the real API.
+    const { sdkExports } = await import('../src/lint/phantom-helpers.mjs');
+    const dir = mkdtempSync(join(tmpdir(), 'langsys-dts-'));
+    const write = (body) => {
+        const p = join(dir, `${Math.random().toString(36).slice(2)}.d.ts`);
+        writeFileSync(p, body);
+        return p;
+    };
+
+    // Shape of langsys-js-svelte: many statements, types behind `export type`.
+    const multi = sdkExports(write(`
+export { currentlyLoadedLocale, sTranslations, tSignal as t, } from 'langsys-js-typescript';
+export { canonicalizeLocale } from 'langsys-js-typescript';
+export { default as Translate } from './components/Translate.svelte';
+export type { iCountryList, iCategories, TFunction, };
+export declare const LangsysApp: LangsysAppSvelte;
+export type TStore = Readable<TFunction>;
+declare class C {
+    detectPreferredLocale(h?: string): string | false;
+}
+`));
+    for (const n of ['currentlyLoadedLocale', 'canonicalizeLocale', 'Translate', 't',
+                     'iCountryList', 'iCategories', 'LangsysApp', 'TStore', 'detectPreferredLocale']) {
+        assert.ok(multi.has(n), `${n} must be recognised — reporting the real API as invented is the worse failure`);
+    }
+    assert.ok(!multi.has('tSignal'), '`tSignal as t` exports the alias, not the local name');
+
+    // Shape of langsys-js-typescript: one combined statement, inline `type`.
+    const single = sdkExports(write(`export { type EncodedRichText, LangsysApp, interpolate, t };`));
+    assert.ok(single.has('EncodedRichText') && single.has('interpolate'),
+        'inline `type` markers must be stripped');
+
+    // A file with no exports must return null so the caller exits non-zero.
+    assert.equal(sdkExports(write('declare const x: number;\n')), null,
+        'no exports found must be null, not an empty allowlist that flags everything');
+
+    rmSync(dir, { recursive: true, force: true });
+});
