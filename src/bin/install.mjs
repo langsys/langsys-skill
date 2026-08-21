@@ -18,6 +18,7 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync, cpSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scopePaths as scopePathsFor } from './lib/scope-paths.mjs';
 import { homedir } from 'node:os';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -26,6 +27,19 @@ const pkg = JSON.parse(readFileSync(join(pkgRoot, 'package.json'), 'utf8'));
 const VERSION = pkg.version;
 
 const START = (v) => `<!-- langsys:skill:start v${v} -->`;
+
+/**
+ * Where the installed tools actually live, for the scope being installed.
+ *
+ * A global install puts the payload under the HOME directory, so a project-
+ * relative `node .langsys/bin/...` resolves to a path that does not exist and
+ * the agent's very first instruction fails with "Cannot find module". The
+ * markdown LINKS were already rewritten per scope; the COMMANDS were not, so
+ * the shim pointed at documentation correctly and at tools incorrectly.
+ */
+const LS = () => (isGlobal ? '~/.langsys' : '.langsys');
+const BIN = () => `${LS()}/bin`;
+const scopePaths = (text) => scopePathsFor(text, isGlobal);
 const END = '<!-- langsys:skill:end -->';
 const ANY_BLOCK = /<!-- langsys:skill:start v[^>]*-->[\s\S]*?<!-- langsys:skill:end -->\n?/g;
 
@@ -67,6 +81,12 @@ if (unknown.length) {
 
 const isGlobal = flag('global');
 const dryRun = flag('dry-run');
+if (isGlobal && value('dir') !== undefined) {
+    console.error('langsys-skill: --global and --dir are mutually exclusive.\n');
+    console.error('  --global installs into your home directory; --dir would be ignored.');
+    console.error('  Drop one. Silently ignoring --dir would leave you believing the install was scoped.');
+    process.exit(2);
+}
 const target = resolve(value('dir') ?? process.cwd());
 const base = isGlobal ? homedir() : target;
 
@@ -87,7 +107,10 @@ function write(path, content) {
 
 /** Replace only the managed block, preserving everything the user wrote. */
 function writeManagedBlock(path, body) {
-    const block = `${START(VERSION)}\n${body}\n${END}\n`;
+    // scopePaths here rather than at each call site: every host writes CORE,
+    // and a host added later would otherwise inherit the project-relative
+    // paths silently — correct under a project install, broken under -g.
+    const block = `${START(VERSION)}\n${scopePaths(body)}\n${END}\n`;
     let next;
     if (existsSync(path)) {
         const existing = readFileSync(path, 'utf8');
@@ -98,6 +121,16 @@ function writeManagedBlock(path, body) {
         next = block;
     }
     write(path, next);
+}
+
+/** Every .md under a directory, recursively. */
+function walkMarkdown(dir, out = []) {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) walkMarkdown(p, out);
+        else if (e.name.endsWith('.md')) out.push(p);
+    }
+    return out;
 }
 
 // ── payload ──────────────────────────────────────────────────────────────────
@@ -115,10 +148,26 @@ function installPayload() {
         });
         cpSync(join(pkgRoot, 'src', 'bin'), join(base, '.langsys', 'bin'), { recursive: true });
         cpSync(join(pkgRoot, 'VERIFIED.md'), join(base, '.langsys', 'VERIFIED.md'));
+
+        // The payload is copied verbatim, so its own embedded commands were
+        // never scoped. Under -g that routed the agent to documents whose
+        // executable lines pointed at a project path that does not exist —
+        // verify.md's ast-grep invocation being the live case, since CORE and
+        // SKILL.md both link to it. Rewrite after copying, so the source tree
+        // keeps the project-relative form that is correct for it.
+        for (const f of walkMarkdown(payloadDir)) {
+            const before = readFileSync(f, 'utf8');
+            const after = scopePaths(before);
+            if (after !== before) writeFileSync(f, after);
+        }
     }
     // Report honestly: a re-install that changes nothing should not read as a write.
+    // Compare against what WOULD be written — the scoped source — not the raw
+    // source. The payload is rewritten for scope after copying, so comparing to
+    // the raw file makes every re-run report as changed, and "0 written" stops
+    // meaning anything.
     const changed = !existsSync(join(payloadDir, 'SKILL.md')) ||
-        readFileSync(join(payloadDir, 'SKILL.md'), 'utf8') !== readFileSync(join(src, 'SKILL.md'), 'utf8');
+        readFileSync(join(payloadDir, 'SKILL.md'), 'utf8') !== scopePaths(readFileSync(join(src, 'SKILL.md'), 'utf8'));
     (changed ? written : skipped).push(`${payloadDir}/ (payload, ${countFiles(src)} files)`);
 }
 
@@ -149,7 +198,16 @@ if (hosts.length === 0) hosts.push('generic');
 const rel = isGlobal ? '~/.langsys/skill' : '.langsys/skill';
 
 /** The rules that must survive even where nothing else is read. */
-const CORE = `## Langsys — critical rules
+// Scoped at CONSTRUCTION, not at each write.
+//
+// The previous version scoped inside writeManagedBlock() and claimed that
+// prevented a later host from inheriting project-relative paths. That was
+// already false when written: codex(), gemini() and cursor() interpolate CORE
+// through a bare write(), so three of five hosts shipped the exact bug the
+// change was fixing — in the same file whose doc links two lines above were
+// rewritten correctly. Scoping the SOURCE closes it for every consumer,
+// however they choose to write it.
+const CORE = scopePaths(`## Langsys — critical rules
 
 Langsys discovers phrases from your running app. **The source text is the key** — there are no catalog files in the repo. If you know i18next, several instincts are wrong here.
 
@@ -181,7 +239,7 @@ Using \`<Translate>\` on a sentence with \`<strong>\` in it shreds the sentence 
 3. Follow \`${rel}/detect.md\` to confirm the profile and settle the base locale
 4. Route: \`${rel}/integrate/{react,vue,svelte,vanilla-ts,php}.md\` (+ \`${rel}/ssr/*.md\` if server-rendered)
 5. Migrating off another i18n library? \`${rel}/migrate/_method.md\` FIRST
-6. Verify with \`${rel}/verify.md\` — including inspecting the registered phrase set`;
+6. Verify with \`${rel}/verify.md\` — including inspecting the registered phrase set`);
 
 // ── shims ────────────────────────────────────────────────────────────────────
 
@@ -191,7 +249,23 @@ const shims = {
         const payload = readFileSync(join(pkgRoot, 'src', 'skill', 'SKILL.md'), 'utf8');
         // Claude supports progressive disclosure, so the shim is the router itself
         // with links resolved to the installed payload.
-        write(join(dir, 'SKILL.md'), payload.replace(/\]\(\.\//g, `](${isGlobal ? '~/.langsys/skill' : '../../../.langsys/skill'}/`));
+        write(join(dir, 'SKILL.md'), scopePaths(payload.replace(/\]\(\.\//g, `](${isGlobal ? '~/.langsys/skill' : '../../../.langsys/skill'}/`)));
+
+        // Two standalone entry points, because both answer a question someone
+        // asks WITHOUT wanting an integration: "how big is this job?" and "why
+        // isn't this working?". Routing those through /langsys means starting a
+        // conversion to ask a question about one.
+        //
+        // They are thin routers over the same payload, never copies of it — a
+        // second copy of the guidance is a second thing to go stale, and this
+        // project has a whole section on what stranded copies cost.
+        const shimDir = (n) => (isGlobal
+            ? join(homedir(), '.claude', 'skills', n)
+            : join(base, '.claude', 'skills', n));
+        for (const n of ['scan', 'doctor']) {
+            write(join(shimDir(`langsys-${n}`), 'SKILL.md'),
+                  scopePaths(readFileSync(join(pkgRoot, 'src', 'shims', `${n}.md`), 'utf8')));
+        }
     },
     codex() {
         // Global scope: Codex reads ~/.codex/AGENTS.md. Never drop AGENTS.md in
@@ -237,4 +311,4 @@ console.log(`  hosts: ${hosts.join(', ')}\n`);
 for (const p of written) console.log(`  + ${p.replace(base + '/', '')}`);
 for (const p of skipped) console.log(`  = ${p.replace(base + '/', '')} (unchanged)`);
 console.log(`\n${written.length} written, ${skipped.length} unchanged.`);
-if (!dryRun) console.log(`\nNext: node .langsys/bin/doctor.mjs\n`);
+if (!dryRun) console.log(`\nNext: node ${BIN()}/doctor.mjs\n`);

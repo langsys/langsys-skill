@@ -1272,8 +1272,17 @@ test('install: unknown options are rejected, not silently ignored', () => {
     assert.equal(run(['--no-such=1']).code, 2, 'unknown valued flag');
 
     // NEGATIVE — every real option must still be accepted.
-    for (const ok of [[], ['--host=claude'], ['--host=claude,codex'], ['-g'], ['--global'], ['-n']]) {
+    for (const ok of [[], ['--host=claude'], ['--host=claude,codex'], ['-n']]) {
         assert.equal(run(ok).code, 0, `real option must be accepted: ${ok.join(' ') || '(none)'}`);
+    }
+    // -g cannot be combined with the --dir this helper uses for isolation, so
+    // it is exercised on its own against a throwaway HOME.
+    for (const g of [['-g'], ['--global']]) {
+        const h = mkdtempSync(join(tmpdir(), 'langsys-g-'));
+        const r = execFileSync('node', [join(root, 'src/bin/install.mjs'), '-n', ...g],
+            { encoding: 'utf8', env: { ...process.env, HOME: h }, stdio: ['ignore', 'pipe', 'pipe'] });
+        assert.match(r, /global install/, `real option must be accepted: ${g[0]}`);
+        rmSync(h, { recursive: true, force: true });
     }
 });
 
@@ -1310,4 +1319,201 @@ test('drift-guard: brace-placeholder classifier separates the defect from correc
     assert.equal(
         bracePlaceholderHits(surf('```svelte\n<Phrase>Based on {n} reviews</Phrase>\n```\n')).defects.length,
         1, 'control: the classifier must still detect a real defect');
+});
+
+test('install: embedded tool paths resolve for the scope they were installed into', () => {
+    // The markdown LINKS were rewritten per scope; the COMMANDS were not. So a
+    // global install told the agent to run `node .langsys/bin/doctor.mjs`, which
+    // resolves against the PROJECT cwd and does not exist — the skill's very
+    // first instruction failed with "Cannot find module", while every doc link
+    // resolved correctly. Correct-looking and non-functional.
+    const run = (home, args) => {
+        execFileSync('node', [join(root, 'src/bin/install.mjs'), ...args],
+            { encoding: 'utf8', env: { ...process.env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+    };
+    const home = mkdtempSync(join(tmpdir(), 'langsys-scope-'));
+    const proj = join(home, 'proj');
+    mkdirSync(proj, { recursive: true });
+
+    // ALL hosts, not just claude. Scoping originally lived in
+    // writeManagedBlock(), which codex/gemini/cursor never call — so three of
+    // five hosts shipped the bug this test was written to prevent, and a
+    // claude-only test reported green.
+    const HOSTS = '--host=claude,codex,gemini,cursor,generic';
+    run(home, ['-g', HOSTS]);
+    run(home, [`--dir=${proj}`, HOSTS]);
+
+    const projectRelative = /(?<![\w~./-])\.langsys\/(bin|lint)/;
+    for (const [label, root_, bad] of [['global', home, projectRelative], ['project', proj, /~\/\.langsys\/(bin|lint)/]]) {
+        for (const f of walkFiles(root_).filter((x) => /\.(md|toml|mdc)$/.test(x) && !x.startsWith(proj))) {
+            assert.doesNotMatch(readFileSync(f, 'utf8'), bad,
+                `${label}: ${f.slice(root_.length)} emits the wrong scope's tool path`);
+        }
+    }
+
+    const g = readFileSync(join(home, '.claude/skills/langsys/SKILL.md'), 'utf8');
+    const p = readFileSync(join(proj, '.claude/skills/langsys/SKILL.md'), 'utf8');
+
+    // POSITIVE — each scope points at a path that exists for that scope.
+    assert.match(g, /node ~\/\.langsys\/bin\/doctor\.mjs/, 'global must use the home payload');
+    assert.match(p, /node \.langsys\/bin\/doctor\.mjs/, 'project must stay project-relative');
+
+    // NEGATIVE — the failure is the wrong scope's path appearing, so assert both ways.
+    assert.doesNotMatch(g, /node \.langsys\/bin/, 'global must not emit a project-relative command');
+    assert.doesNotMatch(p, /~\/\.langsys\/bin/, 'project must not emit a home-absolute command');
+
+    // The path each shim names must actually exist — the check the original bug survived.
+    assert.ok(existsSync(join(home, '.langsys/bin/doctor.mjs')), 'global payload present');
+    assert.ok(existsSync(join(proj, '.langsys/bin/doctor.mjs')), 'project payload present');
+
+    rmSync(home, { recursive: true, force: true });
+});
+
+test('install: the standalone scan and doctor skills are installed and scope-correct', () => {
+    const home = mkdtempSync(join(tmpdir(), 'langsys-shim-'));
+    const proj = join(home, 'proj');
+    mkdirSync(proj, { recursive: true });
+    const run = (args) => execFileSync('node', [join(root, 'src/bin/install.mjs'), ...args],
+        { encoding: 'utf8', env: { ...process.env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+
+    run(['-g', '--host=claude']);
+    run([`--dir=${proj}`, '--host=claude']);
+
+    for (const [label, dir, want, avoid] of [
+        ['global', join(home, '.claude/skills'), /node ~\/\.langsys\/bin\//, /node \.langsys\/bin\//],
+        ['project', join(proj, '.claude/skills'), /node \.langsys\/bin\//, /~\/\.langsys\/bin\//],
+    ]) {
+        for (const n of ['langsys-scan', 'langsys-doctor']) {
+            const f = join(dir, n, 'SKILL.md');
+            assert.ok(existsSync(f), `${label}: ${n} must be installed`);
+            const t = readFileSync(f, 'utf8');
+            assert.match(t, /^---\nname: /, `${label}/${n}: needs frontmatter or it will not be listed`);
+            assert.match(t, new RegExp(`name: ${n}\\n`), `${label}/${n}: name must match the directory`);
+            assert.match(t, want, `${label}/${n}: command must resolve for its scope`);
+            assert.doesNotMatch(t, avoid, `${label}/${n}: must not emit the other scope's path`);
+        }
+    }
+
+    // The shims must ROUTE, not duplicate. A second copy of the guidance is a
+    // second thing to go stale — the stranding mechanism, self-inflicted.
+    const scan = readFileSync(join(home, '.claude/skills/langsys-scan/SKILL.md'), 'utf8');
+    assert.ok(scan.length < 4000, 'a shim that grew past ~4kB is probably duplicating the payload');
+    assert.match(scan, /\/langsys/, 'must hand off to the integration skill');
+
+    // CONTROL: the main skill is still installed and still distinct from the shims.
+    const main = join(home, '.claude/skills/langsys/SKILL.md');
+    assert.ok(existsSync(main), 'control: the router skill must still be installed');
+    assert.notEqual(readFileSync(main, 'utf8'), scan, 'control: shims must not be copies of the router');
+
+    rmSync(home, { recursive: true, force: true });
+});
+
+/** Every file under a directory, recursively. */
+function walkFiles(dir, out = []) {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) walkFiles(p, out);
+        else out.push(p);
+    }
+    return out;
+}
+
+test('install: runs from the PACKED TARBALL, not just the working tree', () => {
+    // `src/shims/` was added without adding it to package.json "files", so the
+    // shim sources never reached the tarball and the installer died with an
+    // uncaught ENOENT — after writing the payload, so a partial install. Every
+    // test passed, because they all run against the working tree where the
+    // files exist. This is the project's own "verify against the published
+    // artifact" rule, applied to its own installer.
+    const w = mkdtempSync(join(tmpdir(), 'langsys-pack-'));
+    execFileSync('npm', ['pack', '--pack-destination', w], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    const tgz = readdirSync(w).find((f) => f.endsWith('.tgz'));
+    assert.ok(tgz, 'npm pack must produce a tarball');
+    execFileSync('tar', ['-xzf', join(w, tgz), '-C', w]);
+    const pkgDir = join(w, 'package');
+
+    // Every file the installer reads at runtime must be IN the tarball.
+    for (const f of ['src/shims/scan.md', 'src/shims/doctor.md', 'src/skill/SKILL.md', 'src/bin/doctor.mjs']) {
+        assert.ok(existsSync(join(pkgDir, f)), `${f} must ship — the installer reads it`);
+    }
+
+    const home = join(w, 'home');
+    const proj = join(home, 'proj');
+    mkdirSync(proj, { recursive: true });
+    const out = execFileSync('node', [join(pkgDir, 'src/bin/install.mjs'), `--dir=${proj}`, '--host=claude'],
+        { encoding: 'utf8', env: { ...process.env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+
+    assert.match(out, /written/, 'must complete and report a summary, not die mid-install');
+    for (const n of ['langsys', 'langsys-scan', 'langsys-doctor']) {
+        assert.ok(existsSync(join(proj, '.claude/skills', n, 'SKILL.md')), `${n} must install from the tarball`);
+    }
+    rmSync(w, { recursive: true, force: true });
+});
+
+test('install: scopePaths is idempotent and covers bin and lint', async () => {
+    // Not idempotent, `.langsys/skill/../bin` became `~/~/.langsys/bin` on a
+    // second pass — reachable because claude() rewrites doc links to `~/…`
+    // BEFORE scoping, so any payload link into bin/ would have produced it.
+    const home = mkdtempSync(join(tmpdir(), 'langsys-idem-'));
+    execFileSync('node', [join(root, 'src/bin/install.mjs'), '-g', '--host=claude'],
+        { env: { ...process.env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+
+    for (const f of walkFiles(home).filter((x) => x.endsWith('.md'))) {
+        const t = readFileSync(f, 'utf8');
+        assert.doesNotMatch(t, /~\/~\//, `${f}: double-rewritten path`);
+        assert.doesNotMatch(t, /\.\.\/~\//, `${f}: relative prefix onto an absolute path`);
+    }
+    // CONTROL: the rewrite genuinely fired, so the assertions above mean something.
+    const verify = readFileSync(join(home, '.langsys/skill/verify.md'), 'utf8');
+    assert.match(verify, /~\/\.langsys\/lint\/sgconfig\.yml/, 'control: lint path must be scoped');
+    rmSync(home, { recursive: true, force: true });
+});
+
+test('install: --global and --dir are mutually exclusive', () => {
+    const home = mkdtempSync(join(tmpdir(), 'langsys-excl-'));
+    let code = 0, out = '';
+    try {
+        execFileSync('node', [join(root, 'src/bin/install.mjs'), '-g', `--dir=${join(home, 'elsewhere')}`],
+            { encoding: 'utf8', env: { ...process.env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) { code = e.status; out = (e.stdout ?? '') + (e.stderr ?? ''); }
+    assert.equal(code, 2, 'silently ignoring --dir is the failure the flag guard exists to prevent');
+    assert.match(out, /mutually exclusive/);
+    assert.ok(!existsSync(join(home, 'elsewhere')), 'must not write anywhere before erroring');
+    rmSync(home, { recursive: true, force: true });
+});
+
+test('scopePaths: idempotent, and covers both directories and both spellings', async () => {
+    // Asserting on installed output could not catch this. The double-rewrite is
+    // LATENT — no current input produces it — so removing the guard changes
+    // nothing observable until a payload link points into bin/, at which point
+    // it silently emits `~/~/.langsys/…`. Mutation-tested: dropping the
+    // lookbehind leaves every output-level assertion green and fails this one.
+    const { scopePaths } = await import('../src/bin/lib/scope-paths.mjs');
+
+    // POSITIVE — both directories, both spellings, both scopes.
+    assert.equal(scopePaths('node .langsys/bin/doctor.mjs', true), 'node ~/.langsys/bin/doctor.mjs');
+    assert.equal(scopePaths('node .langsys/skill/../bin/scan.mjs', true), 'node ~/.langsys/bin/scan.mjs');
+    assert.equal(scopePaths('-c .langsys/skill/../lint/sgconfig.yml', true), '-c ~/.langsys/lint/sgconfig.yml');
+    assert.equal(scopePaths('-c .langsys/lint/sgconfig.yml', true), '-c ~/.langsys/lint/sgconfig.yml');
+
+    // IDEMPOTENCE — the property with no observable consequence today.
+    const once = scopePaths('node .langsys/skill/../bin/doctor.mjs', true);
+    assert.equal(scopePaths(once, true), once, 'running twice must not double-rewrite');
+    assert.equal(scopePaths('node ~/.langsys/bin/doctor.mjs', true), 'node ~/.langsys/bin/doctor.mjs');
+
+    // NEGATIVE — must not paste a scope onto a path that already has one.
+    assert.equal(scopePaths('](../../../.langsys/bin/x.mjs)', true), '](../../../.langsys/bin/x.mjs)',
+        'a relative-prefixed path is already anchored — leave it alone');
+    assert.equal(scopePaths('node /opt/.langsys/bin/x.mjs', true), 'node /opt/.langsys/bin/x.mjs',
+        'an absolute path is not ours to rewrite');
+    assert.equal(scopePaths('see my.langsys/bin/x', true), 'see my.langsys/bin/x',
+        'must not match mid-identifier');
+
+    // Project scope is a no-op on the direct form, and still tidies the ../ form.
+    assert.equal(scopePaths('node .langsys/bin/doctor.mjs', false), 'node .langsys/bin/doctor.mjs');
+    assert.equal(scopePaths('node .langsys/skill/../bin/doctor.mjs', false), 'node .langsys/bin/doctor.mjs');
+
+    // Not every `.langsys/` is a tool path — the payload and VERIFIED.md are not.
+    assert.equal(scopePaths('](.langsys/skill/core/invariants.md)', true), '](.langsys/skill/core/invariants.md)',
+        'skill/ is documentation, resolved by the link rewriter, not by this');
 });

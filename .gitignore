@@ -4,3 +4,16 @@ node_modules/
 .env
 .env.*
 !.env.example
+
+# A self-install into this repo. `node -e "import('./src/bin/install.mjs')"`
+# RUNS the script — importing a script executes it — so a syntax check performed
+# that way silently installs the skill into its own source tree. Use
+# `node --check` instead. Ignored so the accident is visible-but-harmless rather
+# than committed.
+/.langsys/
+/.claude/
+/.codex/
+/.gemini/
+/.cursor/
+/AGENTS.md
+/GEMINI.md

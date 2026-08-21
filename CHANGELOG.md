@@ -11,6 +11,49 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## 0.1.5 - 2026-08-21
+
+Two standalone skills, and a bug in the global install that made the skill's own
+first instruction fail. Every item below was found by a review agent that was
+asked to **break the tests and confirm they went red** — five of six regressions
+were caught, and the one that escaped is the reason `scopePaths` is now a
+separate, unit-tested module.
+
+### Added
+- **`/langsys-scan`** — sizes a job without starting one. Profile, sites split by
+  primitive and effort, deployment posture, content modules. Leads on the NOT
+  EXAMINED section rather than burying it: a site count presented without its
+  exclusions reads as a survey when it is a sample.
+- **`/langsys-doctor`** — interprets findings rather than printing them. Includes
+  what `doctor` **cannot** tell you (base locale, whether phrases register
+  correctly) and states plainly that a clean run is not a verified integration.
+
+Both are thin routers over the same payload, never copies — a second copy of the
+guidance is a second thing to strand.
+
+### Fixed
+- **A global install told the agent to run tools that were not there.** Markdown
+  **links** were rewritten per scope; embedded **commands** were not. So
+  `node .langsys/bin/doctor.mjs` resolved against the project directory while the
+  payload sat in `$HOME/.langsys/` — Phase 0's first instruction failed with
+  "Cannot find module", in a file whose documentation links two lines above
+  resolved correctly.
+- **The first fix was incomplete in three of five hosts.** It was applied inside
+  `writeManagedBlock()`, which `codex`, `gemini` and `cursor` never call — they
+  interpolate the shared block through a bare write. Now scoped at the source's
+  construction, so no host can inherit the wrong paths however it writes them.
+- **`verify.md`'s ast-grep command was never scoped at all**, and the payload is
+  copied verbatim, so a global install routed the agent to a document whose one
+  executable line pointed nowhere. The rewriter now covers `lint` as well as
+  `bin`, and the payload is scoped after copying.
+- **`--global` with `--dir` silently ignored `--dir`.** The user believes the
+  install was scoped; it was not. Now an error.
+- `scopePaths` is idempotent. Without the guard, running twice produced
+  `~/~/.langsys/…` — latent today, reachable by ordering, and invisible to any
+  assertion on installed output. That is why it is unit-tested directly.
+- Re-running an unchanged install reports `0 written` again; the payload's
+  changed-detection now compares against what would actually be written.
+
 ## 0.1.4 - 2026-08-21
 
 Everything here came out of five SDK agents and a production SvelteKit deployment
