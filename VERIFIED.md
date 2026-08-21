@@ -205,6 +205,51 @@ Two things worth keeping from this:
 - **The same failure signature, one level up.** Instance 10 was a claim that rendered as plausible text; so was its fix. A dropped interpolation does not throw — it produces a sentence with a brace in it, on the subset of strings that carry data, only under SSR. It would have shipped into four tracks and been found by users.
 - **The omission that must be documented, not inferred.** A pure translator cannot harvest missing tokens without a process-global flush queue, which is the coupling it exists to remove. So **server-only phrases never self-register even though they render every request**. That is a deliberate trade, and the skill now states it in `verify.md` §3d rather than leaving it to be discovered.
 
+### Two correct statements can compose into a wrong generalisation
+
+The subtlest variant of this file's failure class, and the only one with **nothing falsifiable in
+it**. Contributed by the base-SDK owner, diagnosing their own doc comment.
+
+Context: the SDK has two identity mechanisms with deliberately opposite text handling —
+`_walkForTokens` (the `<Translate>` path) must **never** coalesce adjacent text nodes, because
+token arity is identity; `encodeRichText` (the `<Phrase>` path) **must** coalesce them, because a
+sentence has to survive whole or plural agreement is impossible in languages with more than two
+forms.
+
+The contract comment on the first said:
+
+> *"do not scope this contract to a framework"* — and — *"the invariant is about the token array,
+> not about any renderer."*
+
+**Both statements are true.** Together they push a reader toward *"never coalesce adjacent text
+nodes, anywhere"* — which is the misapplication, delivered as the lesson.
+
+Why this is worse than the other instances in this file:
+
+- A **wrong claim** can be checked and refuted.
+- A **silent absence** can be caught by asking what produced no signal.
+- A **wrong citation** can be read back.
+- **This** has no wrong sentence to find. A proofreader finds nothing; a reviewer agrees with every
+  line; the defect lives entirely in what the statements jointly imply. And the reader who
+  internalises it then meets the opposite mechanism, **recognises it as the exact defect they were
+  warned about, and corrects it** — shipping the bug as a fix, confidently, with the documentation
+  on their side.
+
+The fix that worked is worth copying: **state the boundary in the rule, and put the counter-warning
+where the well-intentioned edit would actually land** — not only where the rule is stated. The
+scope section now names both mechanisms side by side, and the opposite site carries its own comment
+saying the coalescing there is correct and *why*.
+
+Two rules follow:
+
+- **A rule that does not name its own boundary is an invitation to apply it past the boundary.**
+  Generality is not free; every "this applies broadly" widens the set of places a reader will carry
+  it to.
+- **The mutation should be the mistake you are actually afraid of.** They mutation-checked the new
+  tests by modelling the literal misapplication — trimming each text node independently, exactly
+  what applying the other rule there would look like — rather than any edit that produces red. An
+  arbitrary break proves a test *can* fail, not that it catches the thing it exists for.
+
 ### Every absence assertion needs a paired presence — in the same test
 
 Contributed by the React SDK owner while seeding the cross-SDK conformance fixtures, and it
