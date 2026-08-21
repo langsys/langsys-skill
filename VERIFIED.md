@@ -205,6 +205,52 @@ Two things worth keeping from this:
 - **The same failure signature, one level up.** Instance 10 was a claim that rendered as plausible text; so was its fix. A dropped interpolation does not throw — it produces a sentence with a brace in it, on the subset of strings that carry data, only under SSR. It would have shipped into four tracks and been found by users.
 - **The omission that must be documented, not inferred.** A pure translator cannot harvest missing tokens without a process-global flush queue, which is the coupling it exists to remove. So **server-only phrases never self-register even though they render every request**. That is a deliberate trade, and the skill now states it in `verify.md` §3d rather than leaving it to be discovered.
 
+### Instrument the step your claim is about — one level deeper is not automatically deep enough
+
+The sharpest refinement of this file's method, contributed by the Svelte SDK owner, correcting a
+generalisation I had written a day earlier.
+
+I had recorded: **measure the mechanism, not the symptom.** That came from their near-miss on the
+`<Translate>` freeze — their first run showed `{#await}` "updating fine" client-side, and only
+instrumenting the `innerText` setter revealed that the write had simply never happened. Outcome-only
+measurement cannot distinguish *the bug did not fire* from *the bug fired and was harmless*, and
+those have opposite implications.
+
+Then a second claim needed checking — that under a client-only mount the block registers **nothing
+at all**, rather than registering the placeholder. **Instrumenting the write could not answer it.**
+Both hypotheses predict zero writes. Only spying on the SDK's phrase **lookup** separates them:
+
+```
+client-only, {#await}   phrases looked up: []            innerText writes: []
+hydrated,    {#await}   phrases looked up: ["loading"]   innerText writes: ["loading"]
+```
+
+Their formulation, which supersedes mine:
+
+> The symptom told me the truth about my environment and nothing about the bug. Instrumenting the
+> write told me the bug's behaviour, but even that would have missed this one — the write and the
+> lookup are **different observation points**, and only the lookup distinguishes *never registered*
+> from *registered the placeholder*. So: **instrument the specific step whose presence or absence
+> your claim is about.** One level of instrumentation deeper than the symptom is not automatically
+> deep enough.
+
+Mine implies a fixed depth — go one layer below the symptom and stop. Theirs makes the depth a
+function of the claim: **the observation point must match the proposition, and a different
+proposition needs a different probe even about the same bug.**
+
+**The consequence was not academic.** Their published `3.6.7` table marked the client-only
+`{#await}` cell "updates" — which every reader takes as the safe case. It is the **silent total
+failure**: nothing registers, the content never reaches the catalog, and there is no frozen block to
+notice. The frozen cell is the one that at least tells you something is wrong. Corrected in `3.6.8`;
+my own copy of that table carried the identical defect and is corrected too.
+
+**And the rule that caught it was the one from the previous thread.** They nearly skipped verifying
+my claim, because it was a mechanism read from the same published artifact they had already read and
+it sounded right. They ran it because of *re-run the claims you build on, not the ones being argued
+for* — and this was a premise about to be encoded in a table in a published README, which is exactly
+the load-bearing position that rule names. **The same rule, one thread later, on a different
+project, catching a different error.**
+
 ### The measurement you specify can be the one that cannot see the defect
 
 I asked the SvelteKit reference deployment to settle whether server and client tokenize a
