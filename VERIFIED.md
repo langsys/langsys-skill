@@ -110,7 +110,7 @@ Read directly from the published `dist/index.mjs`. These govern every JS SSR tra
 | `initialTranslations2[cat]["__category__"] = cat`, plus injected `__uncategorized__` | `:784-791` | `init()` **mutates the object you pass it** — which is the framework's server payload. Never pass something frozen or shared |
 | `var LangsysApp = new LangsysAppClass()` | `:991` | Hard module singleton — the root cause of the SSR data race |
 | `sTranslations`, `currentlyLoadedLocale` as module-level signals | `:255-256` | Catalog state is process-global, not request-scoped |
-| `Translations` constructor subscribes to both globals | `:409-410` | **Constructing your own instance does not isolate it.** There is no request-scoped translator |
+| `Translations` constructor subscribes to both globals | `:410-411` | **Constructing your own instance does not isolate it.** There is no request-scoped translator |
 | `!force && locale === this.locale && Math.abs(lastLoaded[locale] - now) < 60` | `:598` | The seeded no-refetch guarantee is a **60-second window**, not permanent |
 
 Reported to the base-SDK and Svelte agents as a feature request: a request-scoped translator factory — a pure closure over one request's catalog with no module-global writes — would make genuine SSR of body copy possible and make the SSR README's SEO claim true rather than aspirational.
@@ -169,7 +169,7 @@ Three lessons, and the third came from the Svelte agent:
 - **Inherited premises are the least-verified thing in any report — including a well-verified one.** The Svelte agent's diagnosis of their own repeat of this error, and it is the most useful sentence in the whole exchange. Every other claim they sent me they had executed or curl'd: the route split, the 573 CLDR entries, `detectPreferredLocale`'s mappings. This one they passed through untested and then *strengthened* — from my "logged only under `debug`" to "turns an invisible failure into a loud one" — an escalation with no verification behind it. What separated the checked claims from the unchecked one was not difficulty; a stubbed 422 was the cheapest test in the set. It was that **the unchecked claim arrived as a premise inside someone else's argument rather than as a question**, so it never presented itself as something needing a test. When acting on a peer report, the claims to re-run first are the ones you are building *on top of*, not the ones being argued *for*.
 
 
-**Data that exists on the wire and is discarded.** `GET /api/authorize-project/{id}` returns `base_locale`, `target_locales` and a `default_locales` map (`{es: "es-CR", …}`), but `init()` reads only `key_type` from that response (`dist/index.mjs:775-781`) and ignores the rest. Everything needed to resolve `es` → `es-CR` automatically is already fetched. Raised with the base-SDK agent.
+**Data that exists on the wire and is discarded.** `GET /api/authorize-project/{id}` returns `base_locale`, `target_locales` and a `default_locales` map (`{es: "es-CR", …}`), but `init()` reads only `key_type` from that response (`dist/index.mjs:774-782`) and ignores the rest. Everything needed to resolve `es` → `es-CR` automatically is already fetched. Raised with the base-SDK agent.
 
 > **Two routes, and they resolve locales differently.** The Svelte agent found that the legacy `GET /api/projects/{id}/translations?locale=…` resolves loosely (a bare `es` returns the `es-CR` catalog, 200) while the current `GET /api/translations?project_id=…&locale=…` — the one the SDK itself calls, `dist:122` — matches literally and 422s. A guide that hand-fetches via the legacy route therefore produces a **populated server seed and an empty client catalog**: every string renders as its base phrase. Checked: all three of this skill's JS tracks already emit the current route, so the seam bug does not apply here. Recording it because the failure only appears where the two fetches must agree, which no single-request test exercises.
 
@@ -194,9 +194,9 @@ My first correction prescribed a four-line pure lookup, `catalog[cat]?.[phrase] 
 
 | Fault | Published evidence | How it would have surfaced |
 |---|---|---|
-| Drops interpolation | `dist/index.mjs:144` — `return params ? interpolate(translated, params, …) : translated` | `t('Hello {name}', {name})` renders the literal `Hello {name}` server-side and correctly client-side — a **hydration mismatch on exactly the strings carrying data**. ICU forms render as raw source |
-| `\|\| phrase` does not guard objects | `:136` — the SDK checks `typeof value === 'string' && value.length > 0` | A content-block entry is an object; the fallback returns it instead of the phrase |
-| Not `TFunction`-shaped | `:130-132` — `(phrase, ...rest)` with four overloads | Cannot substitute for `t()`/`$t` without rewriting every call site |
+| Drops interpolation | `dist/index.mjs:473` — `return params ? interpolate(translated, params, …) : translated` | `t('Hello {name}', {name})` renders the literal `Hello {name}` server-side and correctly client-side — a **hydration mismatch on exactly the strings carrying data**. ICU forms render as raw source |
+| `\|\| phrase` does not guard objects | `:466` — the SDK checks `typeof value === 'string' && value.length > 0` | A content-block entry is an object; the fallback returns it instead of the phrase |
+| Not `TFunction`-shaped | `:459-460` — `(phrase, ...rest)` with four overloads | Cannot substitute for `t()`/`$t` without rewriting every call site |
 
 `interpolate(template, params, locale?)` is a **public, pure export** — `dist/index.d.ts:852`, runtime export list at `dist/index.mjs:1729` — so the corrected helper routes through the SDK's own implementation rather than reimplementing it. The prescribed version now mirrors `buildTFn` exactly, minus harvesting, and passes the **request's** locale rather than reading the `currentlyLoadedLocale` global.
 
@@ -204,6 +204,33 @@ Two things worth keeping from this:
 
 - **The same failure signature, one level up.** Instance 10 was a claim that rendered as plausible text; so was its fix. A dropped interpolation does not throw — it produces a sentence with a brace in it, on the subset of strings that carry data, only under SSR. It would have shipped into four tracks and been found by users.
 - **The omission that must be documented, not inferred.** A pure translator cannot harvest missing tokens without a process-global flush queue, which is the coupling it exists to remove. So **server-only phrases never self-register even though they render every request**. That is a deliberate trade, and the skill now states it in `verify.md` §3d rather than leaving it to be discovered.
+
+### A cited line number is not evidence until something reads it back
+
+Contributed by the base-SDK agent, who found six of their own citations off by a few lines
+when they re-ran them before committing — and caught four of mine that had already shipped in
+`langsys-skill@0.1.2`.
+
+Auditing all fifteen line citations in this file produced a clean division:
+
+| Origin | Result |
+|---|---|
+| Derived by grepping the published artifact myself | **11 of 11 correct** |
+| Inherited from a peer's message and recorded as-is | **4 of 4 wrong** |
+
+Not one inherited citation survived. Two were `src/` line numbers recorded against `dist/` —
+`:144` and `:136` point at `patch()` and `post()`, code with no relationship to the claim
+beside them. Two more were off by one or two lines at each end, which is worse: a citation
+landing two lines from the truth reads as correct to anyone spot-checking.
+
+This is the absence pattern and the inherited-premise rule intersecting, and the intersection
+is where it bites — **an inherited citation is an inherited premise wearing the costume of
+evidence.** A line number looks like the most checkable thing in a document, which is exactly
+why nobody checks it, and a wrong one makes an unverified claim look verified to every future
+reader, including the one who wrote it.
+
+Reading a citation back costs one `sed -n 'Np'`. Do it for every citation, including those
+that arrived from someone who had clearly done the work.
 
 ## Consequences for the skill
 

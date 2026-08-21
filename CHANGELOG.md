@@ -11,6 +11,30 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## 0.1.3 - 2026-08-21
+
+### Fixed
+- **Five wrong line citations in `VERIFIED.md`**, which ships in the package.
+  Caught by the base-SDK agent, who re-ran their own citations before committing
+  a review and found six of theirs off by a few lines — then found four of mine
+  that had already shipped in 0.1.2.
+
+  Auditing all fifteen citations produced a clean split: **11 of 11 derived by
+  grepping the published artifact myself were correct; 4 of 4 inherited from a
+  peer's message and recorded as-is were wrong.** Two were `src/` line numbers
+  recorded against `dist/` — `:144` and `:136` point at `patch()` and `post()`,
+  unrelated code. Two more were off by one or two lines at each end, which is
+  worse, because a citation landing two lines from the truth reads as correct to
+  anyone spot-checking.
+
+### Added
+- A new rule, contributed by the base-SDK agent: **a cited line number is not
+  evidence until something reads it back.** An inherited citation is an inherited
+  premise wearing the costume of evidence — a line number looks like the most
+  checkable thing in a document, which is exactly why nobody checks it, and a
+  wrong one makes an unverified claim look verified to every future reader,
+  including the one who wrote it.
+
 ## 0.1.2 - 2026-08-21
 
 The SSR tracks were wrong at the premise, not in the details. Found by
