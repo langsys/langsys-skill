@@ -165,7 +165,7 @@ detectPreferredLocale('!!!', OFFERED)  ->  '!!!'     not even a locale
 
 On no match it returns the visitor's tag unchanged — not `false`, not your base locale. Storing that gives you a locale with no catalog, and the request 422s.
 
-**The diagnostic is not hidden.** `Logger.warn` is not debug-gated, so the 422 prints by default with the server's exact sentence, the locale sent, and the project id:
+**The diagnostic is not hidden.** Neither `Logger.warn` nor `Logger.error` is debug-gated, so the 422 prints by default — with the server's exact sentence, the locale sent, and the project id:
 
 ```
 [Langsys Warning] LangsysAppAPI failed to query
@@ -243,7 +243,7 @@ Use `makeCatalogT(catalog, locale)` for `<title>`, `<meta name="description">`, 
 | Head/meta is base language | Using `t()` for head fields; use the pure catalog lookup |
 | Wrong locale served under load | `init()` called during SSR — module globals raced across requests |
 | Catalog request 422s: "not a base or target locale" | A bare `es` where the project offers `es-CR`, or `supportedLocales` built from the global CLDR list |
-| Empty catalog | The 422 above — search the console for `Langsys Warning`; it prints by default |
+| Empty catalog | The 422 above — search the console for `Langsys`; both the warning and the error print by default |
 
 ## Checklist
 

@@ -268,7 +268,7 @@ Same shape: resolve locale, fetch the catalog before rendering, resolve crawler-
 | Seeding appears to do nothing | Only one of `initialTranslations` / `initialTranslationsLocale` passed — fails silently |
 | Wrong locale served under load | `init()` called during SSR — module globals raced across requests |
 | Catalog request 422s: "not a base or target locale" | A bare `es` where the project offers `es-CR`, or `supportedLocales` built from the global CLDR list |
-| Empty catalog | The 422 above — search the console for `Langsys Warning`; it prints by default |
+| Empty catalog | The 422 above — search the console for `Langsys`; both the warning and the error print by default |
 | Two catalog requests per load | Seeding missing, or more than 60 s between init and locale settle |
 | Every page blank after adding a locale | Duplicate `hreflang` keys — dedupe by URL token |
 | Every string renders as its category name | Stale SDK build inlined at deploy time — pin or verify `link:`/workspace deps |

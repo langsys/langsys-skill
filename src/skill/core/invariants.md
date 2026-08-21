@@ -183,7 +183,9 @@ Two things this shows that reading the signature does not:
 >     http: { status: 422, data: '{"project_id":"…","locale":"de-de"}' } }
 > ```
 >
-> The label is generic and it does not list your valid targets, so it is easy to scroll past in a noisy app — but it is not missing. Search the console for `Langsys Warning` before assuming there is no diagnostic.
+> There is an `error` line too — `Logger.error()` is ungated for the same reason `warn()` is. A failed `init()` against an unoffered locale emitted **two `Langsys Warning` and three `Langsys Error` lines** with `debug: false` in a stubbed run.
+>
+> The labels are generic and name neither the offending locale nor your valid targets, so they are easy to scroll past in a noisy app — but they are not missing. **Search the console for `Langsys` before assuming there is no diagnostic.**
 
 
 ---
