@@ -1276,3 +1276,38 @@ test('install: unknown options are rejected, not silently ignored', () => {
         assert.equal(run(ok).code, 0, `real option must be accepted: ${ok.join(' ') || '(none)'}`);
     }
 });
+
+test('drift-guard: brace-placeholder classifier separates the defect from correct mentions', async () => {
+    // `%n%` ENCODES to `Based on {n} {m0o}reviews{m0c}` — so `{n}` in a stored
+    // phrase is what a RIGHT integration produces. The defect is `{n}` in source
+    // markup. A bare /Based on \{n\}/ cannot tell them apart, and reported a
+    // resolved defect as open the moment the Svelte SDK improved its docs.
+    const { bracePlaceholderHits } = await import('../src/bin/drift-guard.mjs');
+    const surf = (text) => [{ label: 'README', text }];
+
+    // POSITIVE — the actual defect: source markup in a fenced block.
+    const bad = bracePlaceholderHits(surf('```svelte\n<Phrase>Based on {n} <strong>reviews</strong></Phrase>\n```\n'));
+    assert.equal(bad.defects.length, 1, 'source markup in a fence is the defect');
+    assert.equal(bad.mentions.length, 0);
+
+    // NEGATIVE — an encoded phrase string. Correct output, and it legitimately
+    // lives inside a fence, which is why position alone cannot decide this.
+    const enc = bracePlaceholderHits(surf('```\n"Based on {n} {m0o}reviews{m0c}"\n```\n'));
+    assert.deepEqual(enc.defects, [], 'an encoded phrase is correct, not a defect');
+    assert.deepEqual(enc.mentions, [], 'and it is not a mention either — it is right');
+
+    // NEGATIVE — prose warning. Demoted, never dropped.
+    const prose = bracePlaceholderHits(surf('Do not write `Based on {n}` in markup; use `%n%`.\n'));
+    assert.deepEqual(prose.defects, [], 'prose must not fail the guard');
+    assert.equal(prose.mentions.length, 1, 'but must stay visible — demote, never drop');
+
+    // NEGATIVE — clean docs produce nothing at all.
+    assert.deepEqual(bracePlaceholderHits(surf('Use `%n%` in markup.\n')), { defects: [], mentions: [] });
+
+    // CONTROL for the two absence assertions above: the same classifier, on the
+    // same shape of input, must still be able to report a defect. Without this,
+    // "no defects" passes just as happily when the matcher is broken.
+    assert.equal(
+        bracePlaceholderHits(surf('```svelte\n<Phrase>Based on {n} reviews</Phrase>\n```\n')).defects.length,
+        1, 'control: the classifier must still detect a real defect');
+});
