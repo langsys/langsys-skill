@@ -205,6 +205,51 @@ Two things worth keeping from this:
 - **The same failure signature, one level up.** Instance 10 was a claim that rendered as plausible text; so was its fix. A dropped interpolation does not throw — it produces a sentence with a brace in it, on the subset of strings that carry data, only under SSR. It would have shipped into four tracks and been found by users.
 - **The omission that must be documented, not inferred.** A pure translator cannot harvest missing tokens without a process-global flush queue, which is the coupling it exists to remove. So **server-only phrases never self-register even though they render every request**. That is a deliberate trade, and the skill now states it in `verify.md` §3d rather than leaving it to be discovered.
 
+### The measurement you specify can be the one that cannot see the defect
+
+I asked the SvelteKit reference deployment to settle whether server and client tokenize a
+`<Translate>` identically. The measurement I specified was: **count text nodes** in the served
+bytes and in the hydrated DOM, and compare.
+
+They ran it, and then ran token arrays as well. One case separates the two:
+
+```
+{#if show}before<em>yes</em>after{/if}   with show true on the server, false on the client
+
+  text nodes   2  ->  2      IDENTICAL — my check reports "no change"
+  tokens       3  ->  2      the id changes
+```
+
+The lost token lived **inside the `<em>` the branch removed**, so it never touched the host's
+direct child text nodes. My check was blind to the single case in the set that most needed
+catching.
+
+**Node counting is the intuitive proxy, and it is wrong in the direction that matters** — it
+under-reports. Anything the walk descends into (an element branch, nested markup, an attribute)
+can add or remove tokens while the node count sits still.
+
+The general form, and the reason this belongs here rather than in the spec:
+
+> **A question can only test what its author already suspects.** I specified a check against the
+> mechanism I had in mind — text-node splitting — and it could not observe a mechanism I had not
+> thought of. The measurement did not fail; it succeeded at answering a question that was too
+> narrow.
+
+Two practices follow, both cheap:
+
+- **Ask for the artifact the system actually keys on, not a proxy you can reason about.** Here that
+  is `tokens[]` and `custom_id` — what identity is computed from — rather than node counts, which
+  merely correlate with it.
+- **Say what you suspect and ask them to check around it.** Both of this deployment's major
+  findings were *adjacent* to the question asked, not answers to it: the 5,031-character
+  measurement came from a question about seeding, and this one from a question about node arity.
+  Someone with the running system finds things the question did not contain, and a question phrased
+  as a single assertion to confirm suppresses exactly that.
+
+Related and worth stating in the same breath: they also reported that **no hydration warning fired
+on any divergent case** — Svelte hydrated a three-item server list against two-item client state
+in silence. The framework is not a backstop here either.
+
 ### Two correct statements can compose into a wrong generalisation
 
 The subtlest variant of this file's failure class, and the only one with **nothing falsifiable in

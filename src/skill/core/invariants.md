@@ -139,9 +139,36 @@ render — a store empty during SSR and populated after hydration, data fetched 
 anything time- or session-dependent. **The ids quietly never match, the block registers twice,
 and nothing errors.**
 
-**The rule:** interpolation belongs in `t('Hello, {name}!', 'Cat', { name })`, where the
-placeholder stays literal in the key. `<Translate>` is for static prose — marketing copy, CMS
-content, form labels.
+**And it is not only interpolation.** `{#each}` and `{#if}` change the token array with no
+interpolation present at all — `{#if show}yes{/if}` is a static string that appears or does not:
+
+```
+{#each items}   3 items -> [alpha,beta,gamma]   2 items -> [alpha,beta]      different id
+{#if show}      true    -> [before,yes,after]   false   -> [before,after]    different id
+```
+
+A list whose length differs between server and client is not an edge case — it is pagination, a
+filter, or a fetch that has not resolved yet.
+
+**Translatable attributes fail the same way, and are the hardest to see.** An empty attribute value
+is dropped from the token array, but the attribute itself stays in the DOM:
+
+```
+alt=""  ->  outerHTML shows alt=""   hasAttribute('alt') is true   token is GONE
+```
+
+Anyone inspecting the element sees `alt` present and concludes the block is intact, while two
+tokens have silently left the array.
+
+**The rule:** `<Translate>` is for **static prose** — marketing copy, CMS content, form labels.
+Nothing whose token array depends on runtime data: no interpolation, no `{#each}`, no `{#if}`, no
+`{#await}`, no interpolated values on translatable attributes. Interpolation belongs in
+`t('Hello, {name}!', 'Cat', { name })`, where the placeholder stays literal in the key.
+
+> **Do not verify this by counting text nodes.** Measured: an `{#if}` wrapping an *element*
+> branch leaves the direct text-node count **unchanged at 2** while the token array goes from 3
+> to 2 — the lost token was inside the element the branch removed. Node counts are the intuitive
+> check and they are the one that lies. **Compare token arrays.**
 
 `<Phrase>` is **immune to both**: it encodes to a phrase string with no token array and no
 `custom_id`. That is not permission to interpolate into it — `%name%` still belongs in a
