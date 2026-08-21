@@ -101,9 +101,55 @@ Check `res.status` — a failed init that is not surfaced looks like "translatio
 
 ---
 
-## 6. Keep `<Translate>` / `<Phrase>` children static
+## 6. Keep `<Translate>` children static — it is invariant 0 on the block path
 
-The DOM walker mutates rendered output in place, which conflicts with framework reconciliation. Static prose only; dynamic values go through `params`.
+This is the same defect as "never build a phrase string", wearing different clothes, and it is
+the one most likely to be dismissed as a style note.
+
+**A content block's `custom_id` is a hash of its rendered token text**, and an interpolated value
+is *inside* that text. So `<Translate>` wrapping an interpolation mints **a new content block per
+distinct value** — permanent, shared catalog growth keyed on user data. Measured on Svelte 5
+against the published SDK:
+
+```
+<Translate>Hello {name} world, you have {n} items</Translate>
+
+  name='Sarah',    n=3     -> ["Hello Sarah world, you have 3 items"]     id 25364a5d…
+  name='Wolfgang', n=1000  -> ["Hello Wolfgang world, you have 1000 items"] id dc441178…
+```
+
+Two entries. A thousand users, a thousand entries. Exactly the pollution invariant 0 exists to
+prevent — the SDK cannot detect it, and the base language looks perfect throughout.
+
+**And a second failure that has nothing to do with how many users you have.** Whitespace-only text
+nodes are dropped, so a run made of interpolations plus spaces produces **no tokens at all** when
+those values render empty:
+
+```
+<Translate>{a} {b}</Translate>
+
+  a='AA', b='BB'  -> tokens ["AA BB"]   id a32abe23…
+  a='',   b=''    -> tokens []          id f396abe8…    <- different block
+```
+
+The DOM holds one text node in both cases. The *token* arity changed from 1 to 0.
+
+That fires whenever an interpolated value differs between the server render and the client
+render — a store empty during SSR and populated after hydration, data fetched client-side,
+anything time- or session-dependent. **The ids quietly never match, the block registers twice,
+and nothing errors.**
+
+**The rule:** interpolation belongs in `t('Hello, {name}!', 'Cat', { name })`, where the
+placeholder stays literal in the key. `<Translate>` is for static prose — marketing copy, CMS
+content, form labels.
+
+`<Phrase>` is **immune to both**: it encodes to a phrase string with no token array and no
+`custom_id`. That is not permission to interpolate into it — `%name%` still belongs in a
+`params` object — but it does mean the catalog-fragmentation hazard above is specific to the
+block path.
+
+The secondary reason still holds: the DOM walker mutates rendered output in place, which fights
+framework reconciliation.
 
 ---
 
