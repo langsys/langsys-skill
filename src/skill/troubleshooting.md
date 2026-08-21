@@ -40,12 +40,25 @@ instrumented rather than the outcome inferred):
 | content in the block | client-only | hydrated |
 |---|---|---|
 | `{#if flag}…{:else}…{/if}` — one phrase per branch | **frozen** | **frozen** |
-| a lone reactive expression `{msg}` | **frozen** | **frozen** |
-| `{#await}` | updates | **frozen** |
-| two or more phrases in the subtree | updates | updates |
+| a lone reactive expression `{msg}` (rune **or** store) | **frozen** | **frozen** |
+| `{#if $flag}` — store-driven | **frozen** | **frozen** |
+| `{#await}` | **nothing registers — worst case** | **frozen** |
+| two or more phrases in the subtree | fine | fine |
 
 **No SSR is required.** `{#if}` and a lone reactive expression freeze under a plain client-only
-mount. Multi-token subtrees are clean, which confirms the single-token branch is the whole trigger.
+mount. **Runes and stores fail identically** — the update mechanism is irrelevant, only the token
+count matters. Multi-token subtrees are clean, which confirms the single-token branch is the whole
+trigger.
+
+> **The `{#await}` client-only cell is the worst row, not the safe one.** Measured by spying on the
+> SDK's phrase lookup: a client-only mount looks up **zero** phrases — not the placeholder, not the
+> content, nothing. The effect runs before the await block populates the host, so `tokenizeContent`
+> hits its empty-`childNodes` early return and marks the block `parseComplete` **without ever
+> tokenizing it**. Nothing re-enters.
+>
+> So it does not freeze *because it never ran at all*, and the content never reaches the catalog.
+> Enabling SSR then converts that invisible non-registration into a visible freeze — which is an
+> improvement in observability and looks like a regression.
 
 > **`{#await}` surviving a client-only mount is timing luck, not safety.** The effect runs before
 > the await block has populated the host, so `tokenizeContent` hits its empty-`childNodes` early
