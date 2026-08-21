@@ -11,6 +11,58 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## 0.1.4 - 2026-08-21
+
+Everything here came out of five SDK agents and a production SvelteKit deployment
+measuring the shipped code rather than reasoning about it.
+
+### Added
+- **A warning that `<Translate>` around a single element destroys the element.**
+  This is a live defect in the shipped SDK, verified against
+  `langsys-js-typescript@0.6.5` (`dist/index.mjs:1408`, `:1427`). When a subtree
+  yields exactly one token the SDK assigns `element.innerText`, replacing every
+  child. The premise — one token means one text node — is false: a translatable
+  **attribute** produces a token with no text node anywhere, so
+  `<Translate><img alt="Logo" /></Translate>` **destroys the `<img>`**. Plain DOM,
+  no framework, no SSR. And the locale guard is only set on the multi-token path,
+  so the write **re-runs on every locale change**.
+
+- **A troubleshooting entry for blocks that freeze**, with the measured scope:
+  `{#if}` and lone reactive expressions freeze under a plain client-only mount;
+  runes and stores fail identically; multi-token subtrees are clean. The
+  `{#await}` client-only cell is the **worst** case, not the safe one — nothing is
+  registered at all, because the effect runs before the block populates the host
+  and marks it parsed without tokenizing it. Enabling SSR converts that invisible
+  non-registration into a visible freeze.
+
+- **`<Translate>` and `<Phrase>` are two pipelines, not two settings.** `<Translate>`
+  tokenizes each text node and registers a content block with a computed id;
+  `<Phrase>` encodes the run into one phrase string with no content block and no
+  id. The SDKs shipped the right advice with the wrong mechanism named, twice,
+  which is evidence the distinction is not obvious from the code.
+
+### Fixed
+- **Invariant 6 rewritten with the measured mechanism.** "Keep `<Translate>`
+  children static" gave the reconciliation reason, which reads as a style note.
+  The real reason: a content block's `custom_id` is a hash of its **rendered**
+  token text, so wrapping an interpolation mints a new block per distinct value —
+  permanent shared-catalog growth keyed on user data. That is invariant 0 on the
+  block path, and the document never connected them. Extended to cover `{#each}`,
+  `{#if}` and `{#await}`, which change the token array with **no interpolation
+  present**, and to say plainly: **do not verify this by counting text nodes.** An
+  `{#if}` wrapping an element branch leaves the text-node count unchanged while the
+  token array changes.
+
+- **`drift-guard` reported a resolved defect as reopened** because the Svelte SDK's
+  improved docs discuss `{n}` more often — the guard was penalising a document for
+  explaining the trap. It now distinguishes an **encoded phrase** (`%n%` encodes to
+  `{n}`, so `{n}` in a stored phrase is correct) from `{n}` in source markup, using
+  the markup token `{m0o}` as the discriminator. Made importable without side
+  effects so the classifier is unit-testable.
+
+- Verified pin for `langsys-js-svelte` moved `3.6.3` → `3.6.9`; base range `^0.6.4`
+  and peer `^5.0.0` confirmed unchanged.
+
 ## 0.1.3 - 2026-08-21
 
 ### Fixed

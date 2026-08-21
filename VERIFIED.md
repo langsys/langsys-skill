@@ -10,7 +10,7 @@ Every load-bearing claim the skill makes, checked against the **published artifa
 |---|---|---|---|---|
 | `langsys-js-typescript` | **0.6.5** | 0.4.1 | — | `intl-messageformat@^11.2.7` |
 | `langsys-js-react` | **0.6.6** | 0.4.1 | `react@^18 \|\| ^19` | `^0.6.5` |
-| `langsys-js-svelte` | **3.6.3** | 3.4.0 | `svelte@^5` | `^0.6.4` |
+| `langsys-js-svelte` | **3.6.9** | 3.4.0 | `svelte@^5` | `^0.6.4` |
 | `langsys-js-vue` | **0.2.1** | 0.1.1 | `vue@^3.4` | `^0.6.5` |
 | `langsys/langsys-php` | **1.3.1** | — | PHP ≥7.4 + ext-intl | — |
 
@@ -204,6 +204,31 @@ Two things worth keeping from this:
 
 - **The same failure signature, one level up.** Instance 10 was a claim that rendered as plausible text; so was its fix. A dropped interpolation does not throw — it produces a sentence with a brace in it, on the subset of strings that carry data, only under SSR. It would have shipped into four tracks and been found by users.
 - **The omission that must be documented, not inferred.** A pure translator cannot harvest missing tokens without a process-global flush queue, which is the coupling it exists to remove. So **server-only phrases never self-register even though they render every request**. That is a deliberate trade, and the skill now states it in `verify.md` §3d rather than leaving it to be discovered.
+
+### A green typecheck over vendored code is not evidence of anything
+
+Contributed by the `langsys-js-server` builder, in their framing, and it is a genuinely new
+disguise for this file's failure class.
+
+Their vendor script renamed a function's declaration but not its two call sites — a guaranteed
+`ReferenceError` on first call. **`tsc --noEmit` reported clean**, because vendored code carries
+`@ts-nocheck`: it is someone else's JavaScript copied verbatim, and annotating it would mean
+editing it, which defeats the point of vendoring. Only executing the module found it.
+
+What makes it a rule rather than an anecdote is the disguise. The earlier rules here are about
+**tests** that exit early. This is a **typechecker** reporting success over a region it was
+explicitly instructed not to look at — and **nobody thinks of a typechecker as something that can
+be hollowed out**, so its green reads as *stronger* evidence than a green test suite rather than
+weaker.
+
+The fix they shipped is the shape to copy: the vendor script now **executes** the emitted module
+against the published package and compares 22 outputs before it will write the file. The check
+moved from "does this parse" to "does this compute the same answers as the thing it copies."
+
+Generalise it as: **any tool told to skip a region will report success about that region.**
+`@ts-nocheck`, `eslint-disable`, `# type: ignore`, a coverage exclusion, a test filter. The
+suppression is usually justified; the green it produces is not evidence, and the more authoritative
+the tool, the more the absence of a finding will be read as a finding of absence.
 
 ### Instrument the step your claim is about — one level deeper is not automatically deep enough
 

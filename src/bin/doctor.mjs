@@ -23,7 +23,7 @@ const WARN_FLOOR = '0.4.3';   // unmatched-params warning floor (unchanged by 0.
 const VERIFIED = {
     'langsys-js-typescript': '0.6.5',
     'langsys-js-react': '0.6.6',
-    'langsys-js-svelte': '3.6.3',
+    'langsys-js-svelte': '3.6.9',
     'langsys-js-vue': '0.2.1',
 };
 
