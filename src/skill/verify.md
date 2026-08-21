@@ -82,6 +82,8 @@ Three failure signatures:
 
 Click through the main flows so phrases register. Anything never rendered never gets registered — the discovery is runtime, not static.
 
+> **A phrase rendered only on the server never registers either — even though it renders on every request.** Harvesting lives inside `t()`; the pure catalog translator prescribed for crawler-visible text deliberately omits it, because a process-global flush queue would reintroduce the cross-request coupling it exists to avoid. So meta descriptions, PDFs, emails and any SSR-only copy must be registered another way: exercise them once client-side in development with a write key, or add them in the Translation Manager by hand. **Check for these explicitly in step 3c** — their absence is silent and the pages look correct.
+
 ## 4. Production configuration
 
 - [ ] **Read-only key** in production config
@@ -117,5 +119,7 @@ State plainly:
 | Every string renders as its category name | Stale SDK build inlined at deploy time |
 | Every page blank after adding a locale | Duplicate `hreflang` keys — two locales sharing one URL token |
 | Server HTML is base language | Expected in JS frameworks — not a defect. Verify in a browser |
+| Server HTML shows a literal `{name}` or raw ICU syntax | A server-side catalog lookup that skipped `interpolate` |
+| A phrase renders but never appears in the Translation Manager | It renders only server-side, where nothing harvests it |
 
 Full detail: [troubleshooting.md](./troubleshooting.md).

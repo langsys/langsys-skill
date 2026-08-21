@@ -146,9 +146,18 @@ Gate, but seed the gate from the server so it never fires on the happy path:
 
 ```svelte
 <script lang="ts">
-    // Pure, request-scoped, no module state. Same fallback semantics as $t.
-    const ct = (phrase: string, category?: string) =>
-        data.initialTranslations?.[category ?? '__uncategorized__']?.[phrase] || phrase;
+    import { interpolate } from 'langsys-js-typescript';
+
+    // Pure, request-scoped, no module state. Mirrors the SDK's own buildTFn
+    // minus missing-token harvesting, so SSR output matches CSR output.
+    const ct = (phrase: string, ...rest: any[]) => {
+        const category = typeof rest[0] === 'string' ? rest[0] : '';
+        const params   = typeof rest[0] === 'object' ? rest[0] : rest[1];
+        const value    = data.initialTranslations?.[category || '__uncategorized__']?.[phrase];
+        // A content block is an OBJECT — `|| phrase` would not fall back correctly.
+        const translated = typeof value === 'string' && value.length > 0 ? value : phrase;
+        return params ? interpolate(translated, params, data.locale) : translated;
+    };
 </script>
 
 <svelte:head>
@@ -161,6 +170,10 @@ Gate, but seed the gate from the server so it never fires on the happy path:
 ```
 
 Use `$t` for interactive UI, `ct` for anything indexed or scraped.
+
+**Do not shorten `ct` to a raw lookup.** Dropping `interpolate` makes `ct('Hello {name}', { name })` server-render the literal `Hello {name}` — and ICU forms render as raw source — while the client renders them correctly. That is a hydration mismatch on exactly the strings that carry data, and it looks like plausible text rather than an error. Pass `data.locale`, never the SDK's `currentlyLoadedLocale`; reading that global is the coupling `ct` exists to avoid.
+
+> **Server-only phrases do not self-register.** The SDK harvests missing tokens inside `$t`; `ct` deliberately does not, because a process-global flush queue would reintroduce the cross-request coupling. A phrase that renders only through `ct` is never discovered — exercise it once client-side in development with a write key, or add it in the Translation Manager.
 
 ## 5. Locale in the URL
 
@@ -228,6 +241,8 @@ Same shape: resolve locale, fetch the catalog before rendering, resolve crawler-
 |---|---|
 | Body copy is base language in `curl` output | **Expected.** `$t` is inert during SSR — verify in a browser |
 | Head/meta is base language | Using `$t` in `<svelte:head>`; use the pure catalog lookup |
+| Server HTML shows a literal `{name}` or raw ICU | `ct` was shortened to a raw lookup — it must call `interpolate` |
+| A phrase renders but never appears in the Translation Manager | It renders only server-side; `ct` does not harvest missing tokens |
 | Seeding appears to do nothing | Only one of `initialTranslations` / `initialTranslationsLocale` passed — fails silently |
 | Wrong locale served under load | `init()` called during SSR — module globals raced across requests |
 | Two catalog requests per load | Seeding missing, or more than 60 s between init and locale settle |

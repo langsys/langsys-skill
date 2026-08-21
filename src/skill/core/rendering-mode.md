@@ -28,14 +28,44 @@ The second column is the one that matters, and it is the part most people miss. 
 Four lines, no globals, safe under concurrency, and it is the only way to put translated text in server HTML in a JS framework:
 
 ```ts
-// One request's catalog in, a translator out. No module state touched.
-export function makeCatalogT(catalog) {
-    return (phrase, category) =>
-        catalog?.[category ?? '__uncategorized__']?.[phrase] || phrase;
+import { interpolate } from 'langsys-js-typescript';
+
+/**
+ * One request's catalog and locale in, a TFunction-shaped translator out.
+ * Reads and writes no module state, so it is safe under concurrency.
+ *
+ * Mirrors the SDK's own buildTFn exactly, minus missing-token harvesting:
+ *   - same argument overloads: (phrase), (phrase, category), (phrase, params),
+ *     (phrase, category, params)
+ *   - same string guard — a content block is an OBJECT, so `|| phrase` is not
+ *     enough to fall back correctly
+ *   - same interpolation, through the SDK's exported `interpolate` (pure)
+ */
+export function makeCatalogT(catalog, locale) {
+    return (phrase, ...rest) => {
+        const category = typeof rest[0] === 'string' ? rest[0] : '';
+        const params   = typeof rest[0] === 'object' ? rest[0] : rest[1];
+
+        const value = catalog?.[category || '__uncategorized__']?.[phrase];
+        const translated =
+            typeof value === 'string' && value.length > 0 ? value : phrase;
+
+        return params ? interpolate(translated, params, locale) : translated;
+    };
 }
 ```
 
-The `|| phrase` fallback is deliberate and matches what `t()` does before a catalog loads: a translation outage degrades to base language, never to a blank page.
+**Do not simplify this to a raw lookup.** A `catalog[cat]?.[phrase] || phrase` one-liner is wrong in three ways that all render as plausible text rather than as errors:
+
+- **It drops interpolation.** `t('Hello {name}', { name: 'Ada' })` would server-render the literal `Hello {name}`, and ICU forms like `{count, plural, ...}` would render as raw source — then interpolate correctly on the client. A hydration mismatch on exactly the strings that carry data.
+- **`|| phrase` does not guard the object case.** A catalog entry can be a content block, i.e. an object; the SDK checks `typeof value === 'string' && value.length > 0` for that reason.
+- **It is not `TFunction`-shaped**, so it cannot stand in for `t()` / `$t` without rewriting every call site.
+
+Pass the **request's** locale to `interpolate`, never the SDK's `currentlyLoadedLocale` — reading that global is the coupling this function exists to avoid.
+
+> **Server-only phrases do not self-register.** The SDK harvests missing tokens inside `t()`; a pure translator deliberately does not, because a process-global flush queue would reintroduce the cross-request coupling. So a phrase that renders *only* server-side — a meta description, a PDF, an email — is never discovered, even though it renders every request. Register it by exercising it once client-side in development with a write key, or add it in the Translation Manager by hand.
+
+The fallback to `phrase` matches what `t()` does before a catalog loads: a translation outage degrades to base language, never to a blank page.
 
 Use it for everything a crawler or a social scraper reads and JavaScript never fixes in time:
 

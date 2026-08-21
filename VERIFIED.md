@@ -114,6 +114,22 @@ Read directly from the published `dist/index.mjs`. These govern every JS SSR tra
 | `!force && locale === this.locale && Math.abs(lastLoaded[locale] - now) < 60` | `:598` | The seeded no-refetch guarantee is a **60-second window**, not permanent |
 
 Reported to the base-SDK and Svelte agents as a feature request: a request-scoped translator factory — a pure closure over one request's catalog with no module-global writes — would make genuine SSR of body copy possible and make the SSR README's SEO claim true rather than aspirational.
+### The replacement fix was itself defective — caught before publish
+
+My first correction prescribed a four-line pure lookup, `catalog[cat]?.[phrase] || phrase`, into four SSR tracks. The base-SDK agent rejected it against `buildTFn`, and the published dist confirms all three faults:
+
+| Fault | Published evidence | How it would have surfaced |
+|---|---|---|
+| Drops interpolation | `dist/index.mjs:144` — `return params ? interpolate(translated, params, …) : translated` | `t('Hello {name}', {name})` renders the literal `Hello {name}` server-side and correctly client-side — a **hydration mismatch on exactly the strings carrying data**. ICU forms render as raw source |
+| `\|\| phrase` does not guard objects | `:136` — the SDK checks `typeof value === 'string' && value.length > 0` | A content-block entry is an object; the fallback returns it instead of the phrase |
+| Not `TFunction`-shaped | `:130-132` — `(phrase, ...rest)` with four overloads | Cannot substitute for `t()`/`$t` without rewriting every call site |
+
+`interpolate(template, params, locale?)` is a **public, pure export** — `dist/index.d.ts:852`, runtime export list at `dist/index.mjs:1729` — so the corrected helper routes through the SDK's own implementation rather than reimplementing it. The prescribed version now mirrors `buildTFn` exactly, minus harvesting, and passes the **request's** locale rather than reading the `currentlyLoadedLocale` global.
+
+Two things worth keeping from this:
+
+- **The same failure signature, one level up.** Instance 10 was a claim that rendered as plausible text; so was its fix. A dropped interpolation does not throw — it produces a sentence with a brace in it, on the subset of strings that carry data, only under SSR. It would have shipped into four tracks and been found by users.
+- **The omission that must be documented, not inferred.** A pure translator cannot harvest missing tokens without a process-global flush queue, which is the coupling it exists to remove. So **server-only phrases never self-register even though they render every request**. That is a deliberate trade, and the skill now states it in `verify.md` §3d rather than leaving it to be discovered.
 
 ## Consequences for the skill
 

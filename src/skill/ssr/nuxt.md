@@ -126,12 +126,25 @@ All three checked against the published `langsys-js-typescript@0.6.5`:
 Because the reactive primitives are inert during SSR, anything a crawler or a social scraper must read has to come from the fetched catalog directly. It is a pure lookup, so none of the singleton's problems apply:
 
 ```ts
-// Pure, request-scoped, no module state. Same fallback semantics as t().
-const ct = (catalog) => (phrase, category) =>
-    catalog?.[category ?? '__uncategorized__']?.[phrase] || phrase;
+import { interpolate } from 'langsys-js-typescript';
+
+// One request's catalog + locale in, a TFunction-shaped translator out.
+// Mirrors the SDK's buildTFn minus missing-token harvesting.
+const makeCatalogT = (catalog, locale) => (phrase, ...rest) => {
+    const category = typeof rest[0] === 'string' ? rest[0] : '';
+    const params   = typeof rest[0] === 'object' ? rest[0] : rest[1];
+    const value    = catalog?.[category || '__uncategorized__']?.[phrase];
+    // A content block is an OBJECT — `|| phrase` would not fall back correctly.
+    const translated = typeof value === 'string' && value.length > 0 ? value : phrase;
+    return params ? interpolate(translated, params, locale) : translated;
+};
 ```
 
-Use it for `<title>`, `<meta name="description">`, Open Graph and Twitter fields, `<h1>`, and any copy you actually want indexed. Use the reactive primitives for interactive UI.
+**Do not shorten this to `catalog[cat]?.[phrase] || phrase`.** That drops interpolation, so `t('Hello {name}', { name })` server-renders the literal `Hello {name}` and ICU forms render as raw source — then interpolate correctly on the client, producing a hydration mismatch on exactly the strings that carry data. Pass the **request's** locale, never the SDK's `currentlyLoadedLocale`.
+
+> **Server-only phrases do not self-register.** Harvesting lives inside `t()`; a pure translator deliberately omits it. A phrase that renders only server-side is never discovered — register it by exercising it once client-side in development, or add it in the Translation Manager.
+
+Use `makeCatalogT(catalog, locale)` for `<title>`, `<meta name="description">`, Open Graph and Twitter fields, `<h1>`, and any copy you actually want indexed. Use the reactive primitives for interactive UI.
 
 **Social scrapers never run your JavaScript at all** — Facebook, Slack, LinkedIn and iMessage read the served HTML once and stop. For those, the server-resolved head is the only thing they will ever see.
 
