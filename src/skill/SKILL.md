@@ -50,7 +50,8 @@ Then follow [detect.md](./detect.md) to confirm the profile and fill in what `sc
 | Plain JS/TS | [integrate/vanilla-ts.md](./integrate/vanilla-ts.md) |
 | PHP | [integrate/php.md](./integrate/php.md) |
 
-**Before any SSR track, decide the rendering mode:** [core/rendering-mode.md](./core/rendering-mode.md). Public site → SSR, because only SSR puts *current* translations in crawlable HTML. App behind a login → client-only with a ready gate, and skip SSR entirely.
+**Before any SSR track, decide the rendering mode:** [core/rendering-mode.md](./core/rendering-mode.md).
+Public site needing crawler-visible translated body copy → [core/server-sdk.md](./core/server-sdk.md). Public site → SSR, because only SSR puts *current* translations in crawlable HTML. App behind a login → client-only with a ready gate, and skip SSR entirely.
 
 Plus, if the app server-renders: [ssr/nextjs.md](./ssr/nextjs.md) · [ssr/nuxt.md](./ssr/nuxt.md) · [ssr/sveltekit.md](./ssr/sveltekit.md) · [ssr/php.md](./ssr/php.md)
 
@@ -92,6 +93,6 @@ t('home.welcome')            // ❌ registers the literal "home.welcome"
 
 ## Reference
 
-[core/mcp.md](./core/mcp.md) · [core/interpolation.md](./core/interpolation.md) · [core/init-config.md](./core/init-config.md) · [core/categories.md](./core/categories.md) · [core/secrets.md](./core/secrets.md) · [troubleshooting.md](./troubleshooting.md)
+[core/server-sdk.md](./core/server-sdk.md) · [core/mcp.md](./core/mcp.md) · [core/interpolation.md](./core/interpolation.md) · [core/init-config.md](./core/init-config.md) · [core/categories.md](./core/categories.md) · [core/secrets.md](./core/secrets.md) · [troubleshooting.md](./troubleshooting.md)
 
-Verified SDK behavior and known upstream doc defects: [VERIFIED.md](../../VERIFIED.md)
+Verified SDK behavior and known upstream doc defects: [VERIFIED.md](../VERIFIED.md)

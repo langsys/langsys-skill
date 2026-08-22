@@ -249,7 +249,13 @@ const shims = {
         const payload = readFileSync(join(pkgRoot, 'src', 'skill', 'SKILL.md'), 'utf8');
         // Claude supports progressive disclosure, so the shim is the router itself
         // with links resolved to the installed payload.
-        write(join(dir, 'SKILL.md'), scopePaths(payload.replace(/\]\(\.\//g, `](${isGlobal ? '~/.langsys/skill' : '../../../.langsys/skill'}/`)));
+        // Two rewrites, because the shim lives at a third location: `./` links
+        // point into the payload, and `../VERIFIED.md` points beside it. The
+        // payload's own copy stays correct for readers who open it directly.
+        const root_ = isGlobal ? '~/.langsys' : '../../../.langsys';
+        write(join(dir, 'SKILL.md'), scopePaths(payload
+            .replace(/\]\(\.\.\/VERIFIED\.md\)/g, `](${root_}/VERIFIED.md)`)
+            .replace(/\]\(\.\//g, `](${root_}/skill/`)));
 
         // Two standalone entry points, because both answer a question someone
         // asks WITHOUT wanting an integration: "how big is this job?" and "why

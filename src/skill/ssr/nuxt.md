@@ -13,6 +13,19 @@ Read [integrate/vue.md](../integrate/vue.md) first. This adds the server half.
 > resolve it from the fetched catalog directly — see
 > [core/rendering-mode.md](../core/rendering-mode.md#resolve-crawler-visible-text-through-a-pure-catalog-function).
 
+> ## For crawler-visible translated body copy, use `langsys-js-server`
+>
+> This track's seeding removes the flash and the second fetch. It does **not** translate the
+> server render — `t()` and the components render the base language during SSR, because the
+> catalog lives in module globals that only a client-only hook writes.
+>
+> **`langsys-js-server` puts a request-scoped catalog on the server so `t()` resolves during the
+> render.** Read [core/server-sdk.md](../core/server-sdk.md) before choosing between them.
+>
+> `<Phrase>` and `<Translate>` are still client-only in its 0.1.0 — and **nothing signals that for
+> `<Translate>`**, since its host carries no marker. Check that document's capability matrix
+> rather than assuming parity.
+
 ## 1. Runtime config
 
 ```ts

@@ -1517,3 +1517,41 @@ test('scopePaths: idempotent, and covers both directories and both spellings', a
     assert.equal(scopePaths('](.langsys/skill/core/invariants.md)', true), '](.langsys/skill/core/invariants.md)',
         'skill/ is documentation, resolved by the link rewriter, not by this');
 });
+
+test('skill: every internal markdown link resolves IN THE INSTALLED LAYOUT', () => {
+    // Validating the source tree is the wrong check. The payload's links are
+    // written for where the files LIVE — `.langsys/skill/` beside
+    // `.langsys/VERIFIED.md` — so a link can resolve in the repo and dangle for
+    // every reader, or the reverse. Both existed: SKILL.md resolved in source
+    // and pointed outside .langsys/ once installed; rendering-mode.md was the
+    // mirror image. Install, then check.
+    const home = mkdtempSync(join(tmpdir(), 'langsys-links-'));
+    const proj = join(home, 'proj');
+    mkdirSync(proj, { recursive: true });
+    execFileSync('node', [join(root, 'src/bin/install.mjs'), `--dir=${proj}`, '--host=claude'],
+        { env: { ...process.env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+
+    const walk = (d, out = []) => {
+        for (const e of readdirSync(d, { withFileTypes: true })) {
+            const p = join(d, e.name);
+            if (e.isDirectory()) walk(p, out);
+            else if (e.name.endsWith('.md')) out.push(p);
+        }
+        return out;
+    };
+
+    let checked = 0;
+    for (const f of walk(join(proj, '.langsys/skill'))) {
+        for (const m of readFileSync(f, 'utf8').matchAll(/\]\((\.[^)#]+\.md)(#[^)]*)?\)/g)) {
+            assert.ok(existsSync(resolve(dirname(f), m[1])),
+                `${f.slice(proj.length)} links to ${m[1]}, which does not exist once installed`);
+            checked++;
+        }
+    }
+    // CONTROL: without this, "all links resolve" passes vacuously on zero links.
+    assert.ok(checked > 30, `expected many internal links, checked ${checked}`);
+    assert.ok(existsSync(join(proj, '.langsys/skill/core/server-sdk.md')), 'the new document must install');
+    assert.match(readFileSync(join(proj, '.langsys/skill/SKILL.md'), 'utf8'), /server-sdk\.md/,
+        'and must be reachable from the router');
+    rmSync(home, { recursive: true, force: true });
+});

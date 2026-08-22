@@ -25,6 +25,17 @@ The second column is the one that matters, and it is the part most people miss. 
 
 ### Resolve crawler-visible text through a pure catalog function
 
+> **Superseded by `langsys-js-server`.** The hand-rolled helper below covers plain strings only —
+> no `<Phrase>`, no `<Translate>` — so indexed copy containing an `<em>` or an inflected count is
+> still base language. It also does not harvest, so the strings it renders never reach the
+> catalog. **Prefer [server-sdk.md](./server-sdk.md).**
+>
+> Keep reading only if you cannot add a dependency. Migrating off it is a delete-and-reimport —
+> `t()` is signature-compatible — with **one behavioural surprise**: the helper does not harvest
+> and the package does, so a deployment that has run this over its SEO copy for months will see a
+> **burst of new registrations on first deploy**. That is the feature working. Do the first deploy
+> with a read-only key if you want to see the volume before committing to it.
+
 Four lines, no globals, safe under concurrency, and it is the only way to put translated text in server HTML in a JS framework:
 
 ```ts

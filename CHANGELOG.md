@@ -11,6 +11,47 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## 0.1.6 - 2026-08-22
+
+`langsys-js-server@0.1.0` is on npm, so the SSR tracks now route to it. Verified
+by installing the published package from the registry and exercising it, not from
+the repo.
+
+### Added
+- **`core/server-sdk.md`** — the contract for server-rendered translated HTML.
+  Written once and referenced by all three JS SSR tracks rather than triplicated.
+
+  Its capability matrix carries a third column — **"how you would notice if it
+  were wrong"** — because a limitation nobody can detect is indistinguishable
+  from working. That column immediately caught an error of mine: I wrote "same"
+  in `<Translate>`'s row, and `<Translate>` is the one primitive with **no
+  detector at all** — its host stamps no marker, so `auditRenderedHtml()` cannot
+  see it. Confirmed against the published tarball.
+
+- The four things that are wrong by default if you guess: wrap the framework's
+  **request hook**, not a layout (`load` runs first, and `t()` outside a scope
+  returns the base phrase and warns rather than throwing); `result.missing` is a
+  **live view**, not a snapshot; `flush()` needs the actual `RenderResult`, since
+  a hand-built one double-POSTs the queue; and `preloadCatalog()` exists because
+  "set locals, then render" needs the catalog before the render.
+
+### Fixed
+- **Two internal links were wrong for the layout readers actually see.** The
+  payload's links are written for where the files *live* — `.langsys/skill/`
+  beside `.langsys/VERIFIED.md` — so `SKILL.md` resolved in the source tree and
+  pointed outside `.langsys/` once installed, while `rendering-mode.md` was the
+  mirror image. The link test now **installs first and validates there**.
+- The interim hand-rolled catalog helper is marked superseded, with the
+  behavioural surprise stated: it does not harvest and the package does, so a
+  deployment that has run it for months sees a **burst of registrations** on
+  first deploy.
+- `"English"` no longer stands in for the base locale where config is meant —
+  audited, two real instances, and the ones about English's two plural forms
+  correctly left alone.
+- The cross-SDK **marker matrix**: `data-ls-phrase` is absent from PHP, and
+  `data-langsys-contentblock` has no JS equivalent. A `<Translate>` is identified
+  by its component, not by anything in the markup.
+
 ## 0.1.5 - 2026-08-21
 
 Two standalone skills, and a bug in the global install that made the skill's own
