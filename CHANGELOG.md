@@ -11,6 +11,26 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## 0.1.7 - 2026-08-22
+
+### Fixed
+- **Two timing claims in `core/server-sdk.md` were wrong**, found by the
+  `langsys-js-server` builder reading my published track against their published
+  tarball — the reverse of the direction I had run. Re-measured against `0.1.0`:
+
+  - The missing-`cache` warning fires on the **first `run()`**, not at
+    construction. "Warns at construction" sends someone to boot logs it is not in.
+  - **The read-only-key refusal comes from the post-response drain**, so it
+    appears only when a phrase was actually missing. A fully-translated page is
+    silent.
+
+  The second mattered more than the first. My wording — "the package says so at
+  startup" — invited *no warning → not read-only*, and **silence is produced by
+  three different states**. That is this project's own "a check that produces no
+  signal reads as a pass", arriving in the shape of a log rather than a test.
+  Recorded in `VERIFIED.md` with the generalisation: **before documenting a
+  warning as a way to verify something, ask what else produces silence.**
+
 ## 0.1.6 - 2026-08-22
 
 `langsys-js-server@0.1.0` is on npm, so the SSR tracks now route to it. Verified

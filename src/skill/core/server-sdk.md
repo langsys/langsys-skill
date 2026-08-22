@@ -77,8 +77,9 @@ render" shape needs the catalog **before** the render, not from the result. Assi
 
 **Pass a `cache` in any multi-worker deployment.** Two workers mean two independent catalogs, so
 during propagation the same URL alternates between old and new copy depending on which answers —
-which reads to a non-engineer as *"my change didn't save"*. The package warns about this at
-construction if you omit it.
+which reads to a non-engineer as *"my change didn't save"*. The package warns if you omit it, but
+**on the first `run()` or `preloadCatalog()`, not at construction** — the warning lives in the
+catalog-resolution path. Close to boot in practice; not in your boot logs.
 
 **A shared cache must never be an availability dependency.** Reads, writes and deletes are all
 guarded; a dropped Redis connection logs and falls through to the API rather than 500-ing every
@@ -87,9 +88,20 @@ SSR request on every worker.
 **Catalogs are cloned per request**, because the client SDK's `init()` mutates the catalog it is
 given and you are told to pass it there.
 
-**Harvesting requires a write key**, so development only. With a read-only key the package says so
-explicitly at startup — server-rendered phrases will not self-register, which is the correct
-production configuration.
+**Harvesting requires a write key**, so development only. With a read-only key the package refuses
+locally and says so — server-rendered phrases will not self-register, which is the **correct**
+production configuration, not a misconfiguration to fix.
+
+> **That message comes from the post-response drain, so it appears only when a phrase was actually
+> missing.** A fully-translated page is silent — and that silence tells you nothing about your key.
+>
+> Three different states produce no warning: a read-only key with nothing missing, a write key with
+> nothing missing, and a read-only key on a page that happened to resolve everything. **Absence is
+> not an all-clear.** To check a key deliberately, render a phrase you know is unregistered and
+> watch for the refusal.
+
+Measured against `0.1.0`: no warning at construction; the cache warning on the first `run()`; the
+harvest refusal only on a render that misses.
 
 ## Verify
 

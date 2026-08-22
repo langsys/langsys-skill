@@ -205,6 +205,42 @@ Two things worth keeping from this:
 - **The same failure signature, one level up.** Instance 10 was a claim that rendered as plausible text; so was its fix. A dropped interpolation does not throw — it produces a sentence with a brace in it, on the subset of strings that carry data, only under SSR. It would have shipped into four tracks and been found by users.
 - **The omission that must be documented, not inferred.** A pure translator cannot harvest missing tokens without a process-global flush queue, which is the coupling it exists to remove. So **server-only phrases never self-register even though they render every request**. That is a deliberate trade, and the skill now states it in `verify.md` §3d rather than leaving it to be discovered.
 
+### A log you have to earn is not a status indicator
+
+Caught by the `langsys-js-server` builder, reading my published track against their published
+tarball — the reverse of the direction I had run.
+
+I wrote that the package "says so explicitly at startup" when the API key is read-only. Measured
+against `0.1.0`:
+
+```
+at construction        no warning at all
+first run()            the missing-cache warning fires here
+render, NO misses      the read-only warning NEVER fires
+render WITH a miss     fires, after the response flushes
+```
+
+The read-only refusal is emitted from the **post-response drain**, so a fully-translated page never
+produces it. My wording invited an inference — *see the warning → read-only; no warning → something
+else* — and **silence is produced by three different states**: a read-only key with nothing missing,
+a write key with nothing missing, and a read-only key on a page that happened to resolve everything.
+
+That is this file's own rule arriving in the shape of a **log** rather than a test: *a check that
+produces no signal reads as a pass*. A diagnostic that only fires on a specific code path cannot be
+read as a status indicator for the condition it describes, and prose saying "the package tells you"
+quietly promotes it to one.
+
+**The generalisation worth carrying:** before documenting a warning as a way to verify something,
+ask *what else produces silence*. If the answer is more than "the good case", the warning is
+evidence when present and evidence of nothing when absent — and the doc has to say so, because a
+reader will otherwise use it as a two-way test.
+
+Neither of us had documented the timing, so the inference was reasonable and the fix belonged on
+both sides. Their README now states when each warning fires and that absence is not evidence; they
+also found a stale "once per process" in the same paragraph that should have read **once per
+instance**, since two tenants must not swallow each other's warnings — proven with two instances and
+four renders rather than asserted.
+
 ### A green typecheck over vendored code is not evidence of anything
 
 Contributed by the `langsys-js-server` builder, in their framing, and it is a genuinely new
