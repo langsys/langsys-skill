@@ -45,6 +45,7 @@ Entirely optional. If you already have a project ID and key, the skill never ask
 | `langsys-js-svelte` | Svelte 5, SvelteKit |
 | `langsys-js-typescript` | Vanilla TS/JS, Node, custom bindings |
 | `langsys/langsys-php` | PHP 7.4+, server-rendered pages |
+| `langsys-js-server` | Node / Deno / Bun / Workers — **translated HTML on the server**, for crawler-visible copy |
 
 Migrating? Dedicated tracks for **i18next / react-i18next**, **react-intl / FormatJS**, and **vue-i18n**.
 
@@ -71,6 +72,13 @@ Langsys works differently from i18next, and the differences fail *silently* — 
 ```
 
 Per host: `.claude/skills/langsys/SKILL.md` · `AGENTS.md` + `.codex/prompts/langsys.md` · `GEMINI.md` + `.gemini/commands/langsys.toml` · `.cursor/rules/langsys.mdc`
+
+Claude Code also gets two standalone entry points, because both answer a question people ask **without** wanting an integration:
+
+- **`/langsys-scan`** — how big is this job?
+- **`/langsys-doctor`** — why isn't this working?
+
+They are thin routers over the same payload, never copies. Same tools are on `PATH` as `npx langsys-scan` / `npx langsys-doctor` for anyone not in Claude Code.
 
 Claude Code gets progressive disclosure into the guides; the others inline the rules that must not be missed. Re-run to upgrade — shared files are edited only between managed markers, so your own content is never touched, and an unchanged re-install writes nothing.
 

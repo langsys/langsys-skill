@@ -11,6 +11,16 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## 0.1.8 - 2026-08-22
+
+### Fixed
+- **The README did not know about its own new surface.** `Supported` gained
+  `langsys-js-server`, which the SSR tracks have routed to since 0.1.6, and the
+  installed layout now documents `/langsys-scan` and `/langsys-doctor` — shipped in
+  0.1.5 and mentioned nowhere a reader would look. Both are thin routers over the
+  same payload, and the same tools are on `PATH` via `npx` for anyone not in
+  Claude Code.
+
 ## 0.1.7 - 2026-08-22
 
 ### Fixed
