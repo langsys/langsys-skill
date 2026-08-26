@@ -11,6 +11,46 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## Unreleased
+
+### Fixed
+- **`VERIFIED.md` contained two tables that contradicted each other.** The `Defect status`
+  table still called `langsys/langsys-php` unpublished and four Svelte/Vue fixes
+  *"fixed, unreleased"*, while the table above it recorded all of them as RESOLVED. Re-checked
+  every row against the published artifacts and consolidated: PHP is live on Packagist through
+  `v1.3.1`; B, C, D, the Vue `detectPreferredLocale` guidance and the Svelte ISO-8601 claim are
+  all resolved in shipped versions, each now citing the file and line that proves it.
+
+  Verified by **paired presence, not absence** — the corrected text is quoted from the tarball
+  (`README.md:303`, `dist/index.d.ts:215`, `README.md:144`), because a defect pattern can vanish
+  from a doc that was deleted, reworded or moved.
+
+- **The `Working tree` column is retired.** It described peer repos' uncommitted state, which is
+  unverifiable by construction: it recorded what an agent told me, not what a user can install.
+
+- **`VERIFIED.md` carried one global `Verified:` date** covering claims re-verified over the ten
+  days after it. It now scopes the date to the snapshot table and points at `drift-guard` as the
+  live answer.
+
+- **`langsys-js-server@0.1.0` was missing from the version table** despite being the sixth
+  supported package and the target of every JS SSR track since 0.1.6.
+
+- **`PLAN.md` still called `data-langsys-phrase` "approved but unreleased"** with "no version
+  number yet". It shipped in PHP `v1.1.0`, and `integrate/php.md` has required `^1.1` since.
+  Kept as the worked example of boundary-documentation — the method held: no release-day rewrite.
+
+- **The README advertised "82 tests"** against a suite of 94. Replaced with "the full suite"
+  rather than the new number: nothing checks that count, so any number there is a standing
+  drift claim that resets rather than resolves.
+
+### Known
+- **`drift-guard`'s `RESOLVED` lines are confirmations, not tasks.** They are emitted whenever a
+  defect is absent upstream, with no awareness that `VERIFIED.md` already records it — so all
+  five print on every run, forever, asking for work already done. The cost is documented above:
+  the standing noise is what let the `Defect status` table drift unnoticed. The sharper half is
+  that a resolved defect **returning** upstream would print as `still open in <pkg>@<version>`,
+  which reads as no news. Not fixed here; this release is documentation only.
+
 ## 0.1.8 - 2026-08-22
 
 ### Fixed

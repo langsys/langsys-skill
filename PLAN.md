@@ -34,7 +34,7 @@ Had the skill pinned "verified against 0.4.1" by reading that `package.json`, it
 
 Features land while users stay put. When a capability arrives in version *N*, the skill does **not** replace the old guidance with the new — it documents both, separated by an explicit `as of vN` marker, and lets `doctor` decide which half applies to the project in front of it.
 
-The PHP keep-together primitive (§7) is the live case: `data-langsys-phrase` is approved and scoped but unreleased, so the track carries the workaround *and* the primitive with the boundary marked. The alternative — rewriting the track on release day — silently breaks every user still on the prior version, which is the same class of harm as a stale doc, just self-inflicted.
+The PHP keep-together primitive (§7) was the live case: `data-langsys-phrase` was approved and scoped but unreleased, so the track carried the workaround *and* the primitive with the boundary marked. **It shipped in `langsys/langsys-php` v1.1.0 and the method held** — the track needed no rewrite on release day, only the version floor it already named. The alternative — rewriting the track on release day — silently breaks every user still on the prior version, which is the same class of harm as a stale doc, just self-inflicted.
 
 This also means an approved-but-unreleased feature is safe to write against, provided it never appears without its boundary marker.
 
@@ -318,12 +318,12 @@ The operative rule is **"sole child keeps together, mixed content shreds"** (lin
 
 **Direct feature tension:** ICU MessageFormat support (plurals via `ext-intl`, correct per-language categories) is landing *now* — and is partly unreachable for any phrase containing inline markup, for exactly this reason. The two features work against each other until a keep-together primitive exists.
 
-**Roadmap status: APPROVED and scoped.** `data-langsys-phrase` will be built, using the same `{m0o}`/`{m0c}` markup-token wire format as the JS `<Phrase>` — not a PHP-specific invention — so entries registered from either SDK are mutually consumable. The grammatical-agreement argument is what carried the decision: it was put as a correctness problem (wrong noun forms read as broken, not merely awkward) rather than a formatting preference.
+**Roadmap status: SHIPPED in v1.1.0** (was "APPROVED and scoped" when this was written). `data-langsys-phrase` uses the same `{m0o}`/`{m0c}` markup-token wire format as the JS `<Phrase>` — not a PHP-specific invention — so entries registered from either SDK are mutually consumable. The grammatical-agreement argument is what carried the decision: it was put as a correctness problem (wrong noun forms read as broken, not merely awkward) rather than a formatting preference.
 
-**No version number yet** — the interpolation work lands first, and the PHP agent will send the exact release once cut. So the track is **boundary-documented** rather than rewritten (see §1):
+**Shipped in v1.1.0** (Packagist is now at `v1.3.1`). This section is kept as the worked example of §1's boundary-documentation method, written *before* the version was known — at the time it read "no version number yet; the interpolation work lands first". `src/skill/integrate/php.md:32` now requires `^1.1` and states both halves:
 
-- **Until that release:** the workaround — keep a markup-bearing sentence whole by removing the inline markup, or accept the split and its plural limitation. The track states plainly that `data-langsys-contentblock` does **not** solve this; it forces a block, the opposite of what's needed.
-- **From that release:** `data-langsys-phrase` on the run.
+- **Below `^1.1`:** the workaround — keep a markup-bearing sentence whole by removing the inline markup, or accept the split and its plural limitation. The track states plainly that `data-langsys-contentblock` does **not** solve this; it forces a block, the opposite of what's needed.
+- **On `^1.1` or later:** `data-langsys-phrase` on the run.
 
 `doctor` reads the installed version and the track shows the applicable half.
 

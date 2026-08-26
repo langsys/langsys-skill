@@ -2,7 +2,13 @@
 
 Every load-bearing claim the skill makes, checked against the **published artifact users actually install** — `npm pack <pkg>@<version>` / Packagist — never a sibling working tree (PLAN.md §1).
 
-**Verified:** 2026-08-16
+**Verified:** table below captured 2026-08-16; defect statuses re-verified against the
+published tarballs on **2026-08-26**.
+
+> A single date on a living file goes stale silently, which is this file's own failure class.
+> Treat the date as belonging to the **snapshot table**, not to every claim — each entry names
+> the version it was verified against. For "is this still true *right now*", the authoritative
+> answer is `node src/bin/drift-guard.mjs`, which re-fetches the published artifacts.
 
 ## Published versions at time of verification
 
@@ -13,6 +19,17 @@ Every load-bearing claim the skill makes, checked against the **published artifa
 | `langsys-js-svelte` | **3.6.9** | 3.4.0 | `svelte@^5` | `^0.6.4` |
 | `langsys-js-vue` | **0.2.1** | 0.1.1 | `vue@^3.4` | `^0.6.5` |
 | `langsys/langsys-php` | **1.3.1** | — | PHP ≥7.4 + ext-intl | — |
+| `langsys-js-server` | **0.1.0** | — | none (`parse5`, `intl-messageformat`), Node ≥18 | — (does not depend on the base SDK) |
+
+`langsys-js-server` is the one package here that is **not** a binding over `langsys-js-typescript` —
+it reimplements translation against finished HTML, which is why it has no base-SDK dependency and no
+peer framework. Its claims live in `src/skill/core/server-sdk.md`, verified against the `0.1.0`
+tarball; `0.1.0` carries **no provenance attestation**, having been published outside CI.
+
+**Two packages have published newer versions since this snapshot** — `langsys-js-react@0.6.7` and
+`langsys-js-svelte@3.6.10`. The pins above are deliberately **not** bumped: a version number is not
+evidence, and re-pinning without re-reading the artifact would launder an assumption into a
+verified claim. The defect statuses below *were* re-checked against `3.6.10` and are cited as such.
 
 All three binding carets now resolve to base **`0.6.4` or newer** (React `^0.6.5`, Vue `^0.6.5`, Svelte `^0.6.4`), verified from each published `package.json`. That closes a structural gap worth naming: the old Vue range `^0.4.1` capped at `0.4.3`, so **every base-SDK fix from `0.5.0` onward was unreachable for Vue consumers regardless of what any document claimed.** A caret is part of the API surface — a correct fix behind a stale range ships as no fix at all.
 
@@ -83,7 +100,7 @@ Not working-tree issues — these are shipped to users today.
 
 | # | Defect | Location (published) | Impact |
 |---|---|---|---|
-| A | ~~`composer require langsys/langsys-php` does not work~~ | **RESOLVED** | Vendor-namespace permission resolved upstream. `langsys/langsys-php` is live with `v1.0.0`–`v1.1.0` published; requires `php >=7.4` + `ext-curl`/`ext-json`/`ext-intl`. Track now leads with Composer. `doctor` flipped green with no code change — the three-state check already covered it. |
+| A | ~~`composer require langsys/langsys-php` does not work~~ | **RESOLVED** | Vendor-namespace permission resolved upstream. `langsys/langsys-php` is live with `v1.0.0`–`v1.3.1` published (queried 2026-08-26); requires `php >=7.4` + `ext-curl`/`ext-json`/`ext-intl`. Track now leads with Composer. `doctor` flipped green with no code change — the three-state check already covered it. |
 | G1 | ~~Content-block `custom_id` diverges between SDKs for non-ASCII~~ | **RESOLVED in 0.6.0** | `generateCustomId` now uses standard MD5 over canonical JSON. Independently verified against the published tarball: `md5` agrees with UTF-8 MD5 for `Café`, `Don't miss out`, `日本語`, `Ελλάδα`; upstream reports 12/12 match against langsys-php's reference fixtures with byte-identical canonical JSON. |
 | G2 | ~~Same root cause could make the JS SDK collide with itself~~ | **RESOLVED in 0.6.0** | The OR-absorption class no longer exists. Verified `éa`/`ǩa`, `Café`/`Cafǩ`, `abéa`/`abǩa` all distinct — **and the `abéb`/`abǩb` control stayed distinct**, so a fix that collided everything could not have read as progress. |
 
@@ -646,18 +663,46 @@ The path that found them was: **enumerate the real exports first, then check whe
 
 ## Defect status
 
-| # | Published | Working tree | Note |
-|---|---|---|---|
-| A — PHP not on Packagist | **open** | `v1.0.0` re-tagged at `9a4fbf9` | **Package renamed `langsys/php-sdk` → `langsys/langsys-php`** to match the repo; Packagist identity comes from `composer.json`, so the old name will never resolve. Blocked on a **vendor-namespace permission**: `langsys/` is owned by another Packagist account, and Packagist only accepts `langsys/*` from an existing vendor maintainer — reporting the refusal as though the repo were claimed. Renaming does not help. Blocks task #29. |
-| F — PHP ICU plural paths unverified | **RESOLVED** | verified on CI | Closed. CI ran with `intl 8.4.24` / ICU 74.2 across PHP 7.4–8.4: Russian plurals (incl. 21→`one`, 111→`many`), Arabic's six categories with Arabic-Indic digits, locale number formatting, ICU-vs-simple byte equality, malformed-ICU fallback — **all passing**, and `LANGSYS_REQUIRE_INTL` turns the skip into a hard failure on CI so they cannot pass by omission. Per-language plural correctness is now verified, not assumed. |
-| B — Svelte `{n}` example | open in 3.4.1 | **fixed**, unreleased | Repo swept for other brace-in-markup examples; this was the only one |
-| C — Vue `{n}` example | open in 0.1.1 | **fixed**, unreleased | Plus a third site at `README.md:253` and a commented-out `apiUrl` at `README.md:68` that I had not found |
-| D — Svelte declaration header | open in 3.4.1 | **fixed**, unreleased | Now lists all three components; also fixed the layering summary at `README.md:27`, same root cause, which I missed |
-| E — React reference wording | n/a | correct | Source for B and C fixes |
-| Vue `README.md:95` (`apiUrl`) | **RESOLVED in 0.2.0** | fixed | **Correction to an earlier entry of mine.** I recorded this as a published defect after reading the *local working tree*. The published 0.1.1 README contains no `apiUrl` — verified by drift-guard against the tarball. The underlying API fact (claim 2, `apiUrl` is not a config field) is unaffected and remains verified from `dist/index.d.ts`. |
-| Vue `README.md:308` (`detectPreferredLocale`) | open in 0.1.1 | **fixed**, unreleased | Both paths of claim 3 now documented, with the working guard |
-| Svelte `README.md:140` ISO 8601 | open in 3.4.1 | **fixed**, unreleased | Confirmed empirically against the published bundle: Dates render `Mar 14, 2026` / `14.03.2026`. Went stale at the 3.2.0 CLDR adoption |
+Re-checked 2026-08-26 against the published artifacts. The **Working tree** column is retired:
+every row that read *"fixed, unreleased"* has since shipped, and a column describing someone
+else's uncommitted state was unverifiable by construction — it recorded what an agent told me,
+not what a user can install.
+
+| # | Status in the published artifact | Note |
+|---|---|---|
+| A — PHP not on Packagist | **RESOLVED** — `langsys/langsys-php` is live on Packagist, `v1.0.0`–`v1.3.1` (queried 2026-08-26) | The blocker was a **vendor-namespace permission**: `langsys/` was owned by another Packagist account, and the package had been renamed `langsys/php-sdk` → `langsys/langsys-php` to match the repo. Both are settled; the PHP track leads with Composer and `doctor` flipped green with no code change. Unblocks task #29. |
+| F — PHP ICU plural paths unverified | **RESOLVED** — verified on CI | Closed. CI ran with `intl 8.4.24` / ICU 74.2 across PHP 7.4–8.4: Russian plurals (incl. 21→`one`, 111→`many`), Arabic's six categories with Arabic-Indic digits, locale number formatting, ICU-vs-simple byte equality, malformed-ICU fallback — **all passing**, and `LANGSYS_REQUIRE_INTL` turns the skip into a hard failure on CI so they cannot pass by omission. Per-language plural correctness is now verified, not assumed. |
+| B — Svelte `{n}` example | **RESOLVED in 3.5.0**, still correct in the published `3.6.10` — `README.md:303` reads `Based on %n% <strong>reviews</strong>` | Repo swept for other brace-in-markup examples; this was the only one |
+| C — Vue `{n}` example | **RESOLVED in 0.2.0**, confirmed in published `0.2.1` — `dist/index.d.ts:215` reads `Based on %n% <strong>reviews</strong>` | Plus a third site at `README.md:253` and a commented-out `apiUrl` at `README.md:68` that I had not found |
+| D — Svelte declaration header | **RESOLVED in 3.5.0**, confirmed in published `3.6.10` — the header bullets list `Translate`, `Phrase` and `DontTranslate` | Now lists all three components; also fixed the layering summary at `README.md:27`, same root cause, which I missed |
+| E — React reference wording | correct — n/a | Source for B and C fixes |
+| Vue `README.md:95` (`apiUrl`) | **RESOLVED in 0.2.0.** Published `0.2.1` now warns *against* `apiUrl` at `README.md:105`, which is why the guard's `init({…apiUrl` test correctly stays quiet | **Correction to an earlier entry of mine.** I recorded this as a published defect after reading the *local working tree*. The published 0.1.1 README contains no `apiUrl` — verified by drift-guard against the tarball. The underlying API fact (claim 2, `apiUrl` is not a config field) is unaffected and remains verified from `dist/index.d.ts`. |
+| Vue `README.md:308` (`detectPreferredLocale`) | **RESOLVED**, published in `0.2.1` — `README.md:337-352` documents both paths, labels the `\|\| 'en-US'` idiom WRONG, and gives the `includes()` guard | Both paths of claim 3 now documented, with the working guard |
+| Svelte `README.md:140` ISO 8601 | **RESOLVED in 3.6.3**, and the evidence is now the strong kind — `3.6.10`'s `README.md:144` *states* CLDR medium date style (`Mar 14, 2026` / `14.03.2026`) rather than merely omitting the old claim | Went stale at the 3.2.0 CLDR adoption. Entry J above still describes this as verified by absence; that was true when written and is superseded here |
 
 ## Re-verification
 
-Re-run before each release, and after Svelte 3.4.2 / Vue 0.1.2 ship — both agents committed to confirming on their threads. The CI drift guard (task #24) checks published artifacts across **all three doc surfaces** (README, declaration headers, JSDoc) and fails when a status changes, so fixed items don't linger here as open and regressions don't pass silently.
+Re-run before each release: `node src/bin/drift-guard.mjs`. It checks published artifacts across
+**all three doc surfaces** (README, declaration headers, JSDoc), because two of the defects above
+lived outside markdown and a README-only audit misses them by construction.
+
+The Svelte 3.4.2 / Vue 0.1.2 confirmations this section used to wait on **all landed** — every
+upstream defect tracked here is now resolved in a published artifact.
+
+> **A caveat about how to read the guard's output, learned 2026-08-26.** Its `RESOLVED` lines are
+> emitted whenever a defect is absent upstream, with **no awareness of whether this file already
+> records it**. All five currently printed are already marked resolved above, so the guard's
+> closing advice — *"mark resolved in VERIFIED.md"* — asks for work that is already done, on every
+> run, forever. Treat a `RESOLVED` line as a *confirmation*, not a task, and check the tables here
+> before acting on one.
+>
+> That noise has a cost, and it is visible in this file's history: the standing five trained the
+> eye past the section, and the **Defect status** table below drifted for weeks — still calling
+> PHP unpublished and four Svelte/Vue fixes "unreleased" — while the table above it said
+> RESOLVED. Two tables in one file, contradicting each other, is what a permanently-ignored
+> signal buys.
+>
+> The sharper half of the same gap: a defect recorded here as resolved that **came back** upstream
+> would print as `still open in <pkg>@<version>` — the wording for a defect that never left, which
+> reads as *no news*. So the guard is currently strongest on defects it has always seen and
+> weakest on regressions of fixes, which is the inverse of what a drift guard is for.
