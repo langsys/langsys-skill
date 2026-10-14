@@ -51,7 +51,7 @@ Then follow [detect.md](./detect.md) to confirm the profile and fill in what `sc
 | PHP | [integrate/php.md](./integrate/php.md) |
 
 **Before any SSR track, decide the rendering mode:** [core/rendering-mode.md](./core/rendering-mode.md).
-Public site needing crawler-visible translated body copy: on **SvelteKit**, seed the store in the layout body (its SSR track); on **Next App Router or Nuxt**, use the pure catalog function or [core/server-sdk.md](./core/server-sdk.md), never a store seed. Public site → SSR, because only SSR puts *current* translations in crawlable HTML. App behind a login → client-only with a ready gate, and skip SSR entirely.
+Public site needing crawler-visible translated body copy: on **SvelteKit**, seed the store in the layout body (its SSR track). On the **React and Vue tracks** (Next Pages or App Router, Nuxt, Remix), don't seed the store; use the pure catalog function or [core/server-sdk.md](./core/server-sdk.md). Public site → SSR, because only SSR puts *current* translations in crawlable HTML. App behind a login → client-only with a ready gate, and skip SSR entirely.
 
 Plus, if the app server-renders: [ssr/nextjs.md](./ssr/nextjs.md) · [ssr/nuxt.md](./ssr/nuxt.md) · [ssr/sveltekit.md](./ssr/sveltekit.md) · [ssr/php.md](./ssr/php.md)
 

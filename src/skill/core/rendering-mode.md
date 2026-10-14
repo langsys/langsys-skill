@@ -71,8 +71,8 @@ under all four of these. Breaking any one is a live defect, not a style problem.
    | **React / Vue** | Any suspension inside the tree between seed and read | Only by inspecting the whole subtree, with nothing reporting a violation |
    | **Next App Router** | Not this rule at all — separate module graphs | **No.** Non-functional; see below |
 
-   > **This is why Svelte is permitted and the others are not.** Not because Svelte is
-   > better written, but because its renderer cannot yield, so the condition is a structural
+   > **This is why seeding is recommended on Svelte and not elsewhere** (unsafe in practice on
+   > Nuxt and Pages Router, non-functional on App Router). Not because Svelte is better written, but because its renderer cannot yield, so the condition is a structural
    > guarantee rather than a property you have to keep re-verifying after every refactor.
 3. **The failure path must RESET, never return early.** This is the subtle one. An early
    return on a failed catalog fetch reads as a harmless no-op; it is not, because the
@@ -126,14 +126,14 @@ seed and the read, wherever it sits and whatever put it there. **There is one ru
 is the same in all three frameworks** — the frameworks differ only in how likely you are to
 violate it, and in whether you can guarantee you have not.
 
-- **SvelteKit** — permitted, and in the **default renderer** the condition is structurally
+- **SvelteKit** — recommended, and in the **default renderer** the condition is structurally
   guaranteed rather than merely satisfiable. Two ways to lose it, both in
   [ssr/sveltekit.md](../ssr/sveltekit.md): seeding outside the render pass (`hooks.server.js`),
   and turning on `compilerOptions.experimental.async`.
-- **Nuxt** — a clean result was measured for reads in `app.vue` setup above any await,
-  but with the seed in a Nitro hook, which bled on SvelteKit, so it's unexplained and
-  unconfirmed. Even taken at face value it collapses the moment anyone writes
-  `await useAsyncData`, which is how Nuxt apps fetch. Unsafe *in practice*, not
+- **Nuxt** — a safe position exists (seed in a Nitro `request` hook, reads in `app.vue`
+  setup before any await), measured on Nuxt 3.21.11 and 4.6.1. It relies on Nitro's
+  hook-to-render path having no event-loop turn, which is internal behavior. And it
+  collapses the moment anyone writes `await useAsyncData`, which is how Nuxt apps fetch. Unsafe *in practice*, not
   structurally forbidden. Recommend request scoping.
 - **Next Pages Router / `renderToString`** — safe by idiom, not architecture.
   `getServerSideProps` fetches before render, so the usual shape has no await between the
@@ -163,11 +163,11 @@ fully translated body copy with none of these conditions to manage.
 |---|---|---|---|
 | **SSR (JS), seeded** | **translated, current per request** | base language | yes |
 | **SSR (JS), not seeded** | base language | base language | yes |
-| **Prerendered (JS)** | translated, build-time snapshot | base language | yes, after hydration |
+| **Prerendered (JS)** | translated, build-time snapshot *(reasoned, not measured)* | base language | yes, after hydration |
 | **Client-only (JS)** | no HTML at all | no HTML at all | yes |
 | **PHP SSR** | **translated, current** | **translated, current** | yes |
 
-**Row two is the failure this document exists to prevent.** An unseeded SSR app is not
+**Row two is the failure this document exists to prevent, when nothing else covers it.** The React and Vue tracks deliberately don't seed, and cover crawler copy with the catalog function or `langsys-js-server` instead. An unseeded SSR app with neither is not
 subtly degraded — it serves every localized route with a byte-identical base-locale body.
 Google reads those as duplicates of one another, folds them into a single cluster, and
 keeps one arbitrary representative. More locales means more identical copies competing, so
@@ -342,7 +342,7 @@ The gate is what prevents that flash: render the loader, not the stale locale, u
 ## What to do with this
 
 1. Decide public vs. app **before** opening an `ssr/` track.
-2. Public → SSR. On SvelteKit, seed the store in the layout body so `t()` server-renders. On Next App Router or Nuxt, resolve crawler-visible strings through the pure catalog function or `langsys-js-server`. Either way, resolve head tags from the catalog directly.
+2. Public → SSR. On SvelteKit, seed the store in the layout body so `t()` server-renders. On the React and Vue tracks (Next Pages or App Router, Nuxt, Remix), don't seed; resolve crawler-visible strings through the pure catalog function or `langsys-js-server`. Either way, resolve head tags from the catalog directly.
 3. App → skip `ssr/` entirely. Gate on `ready` and move on.
 4. Static-only constraint → prerender per locale; indexed head copy is as fresh as the last build.
 5. **Which check works depends on whether server HTML is meant to be translated.** If it is (seeded SvelteKit, the pure function, `langsys-js-server`), `curl` is the check that matters: run `ssr-i18n-check`. If it isn't (client-only), `curl` shows base language whether the app works or not, so open a browser. See [verify.md](../verify.md).

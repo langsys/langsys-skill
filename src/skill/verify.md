@@ -165,10 +165,12 @@ Click through the main flows so phrases register. Anything never rendered never 
 
 - [ ] **Read-only key** in production config
 - [ ] `debug: false`
-- [ ] SSR seeding in place if the app server-renders (`initialTranslations` + `initialTranslationsLocale` — **both**, or it silently no-ops)
+- [ ] `init()` gets `initialTranslations` + `initialTranslationsLocale` if the app server-renders — **both**, or it silently no-ops
+- [ ] **SvelteKit:** the store is seeded in the body of the layout that owns the `load` (not a hook), and its failure path resets
+- [ ] **React / Vue:** the store is **not** seeded on the server
 - [ ] No duplicate translation fetch on hydration (check the network tab)
 - [ ] `init()` never runs during server rendering — it races module globals across concurrent requests
-- [ ] Crawler-visible text resolved from the catalog, not from `t()` / `$t`
+- [ ] Head tags resolved from the catalog directly, on every framework. On React/Vue tracks, all crawler-visible copy comes from the catalog function or `langsys-js-server`
 - [ ] Offered locales deduplicated by URL token before rendering `hreflang`
 - [ ] If the SDK is a `link:`/workspace dependency, the **deploying machine's** build is the one that ships — pin or verify it
 
@@ -195,7 +197,7 @@ State plainly:
 | Phrase registered under the wrong name | Reversed `t()` arguments |
 | Every string renders as its category name | Stale SDK build inlined at deploy time |
 | Every page blank after adding a locale | Duplicate `hreflang` keys — two locales sharing one URL token |
-| Server HTML is base language | Expected in JS frameworks — not a defect. Verify in a browser |
+| Server HTML is base language | **Seeded SvelteKit:** a defect; the seed is missing, in a hook, or in a layout that doesn't own the `load`. Run `ssr-i18n-check`. **React/Vue tracks:** expected for `t()` copy, since those tracks don't seed the store; head tags and catalog-function copy should still be translated. `<Phrase>`/`<Translate>` copy: expected everywhere |
 | Server HTML shows a literal `{name}` or raw ICU syntax | A server-side catalog lookup that skipped `interpolate` |
 | A phrase renders but never appears in the Translation Manager | It renders only server-side, where nothing harvests it |
 

@@ -22,8 +22,9 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
   `data.translations` while `load` returned `initialTranslations`, so every request reset to
   base language. Stopped calling Nuxt "prohibited". Removed a stale "being re-measured" note.
   Fixed `verify.md`'s "string literal" checklist item, and the three remaining
-  `translationsLoadingPromise` sites. Marked the Nuxt Nitro-hook result as unexplained,
-  because a hook seed bled 70/80 on SvelteKit.
+  `translationsLoadingPromise` sites. The Nuxt Nitro-hook result was flagged in review
+  and then re-measured and confirmed (sole writer, positive control in the same responses,
+  Nuxt 3.21.11 and 4.6.1). The window opens on an event-loop turn, not on an await.
 - **`invariants.md` said "the phrase argument must always be a literal."** The lint rules
   never enforced that; they flag *construction* (template substitution, concatenation,
   `sprintf()`, PHP `"$var"`), not a variable argument. The real rule is cardinality:
@@ -57,10 +58,10 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 - **Corrected: "a total outage looks fine" holds only from a cold process.** Once any locale
   has succeeded the singleton is poisoned, and a later total outage mislabels every locale
   rather than none.
-- **SSR catalog seeding is now framework-scoped, measured rather than assumed.** Permitted
-  on SvelteKit; **unsafe in practice on Nuxt** — a possible safe position (`app.vue` setup
-  above any await) is unconfirmed, and `await useAsyncData`, the idiomatic Nuxt fetch, takes
-  it from 0/80 to 67/80 anyway; **non-functional on the Next App Router**, where Server and
+- **SSR catalog seeding is now framework-scoped, measured rather than assumed.** Recommended
+  on SvelteKit; **unsafe in practice on Nuxt** — a safe position exists (Nitro hook seed,
+  `app.vue` reads before any await), but `await useAsyncData`, the idiomatic Nuxt fetch, takes
+  it from 0/80 to 67/80; **non-functional on the Next App Router**, where Server and
   Client Components hold separate module instances so the seed lands in a graph the reader
   is not in — 100% of non-base locales wrong at concurrency 1. The operative rule is *no
   suspension between the seed and any `t()` read*, which is a subtree property, not a

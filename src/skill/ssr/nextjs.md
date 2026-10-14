@@ -4,7 +4,7 @@
 > ### ⛔ Do NOT seed the catalog store during SSR here — three separate verdicts
 >
 > [core/rendering-mode.md](../core/rendering-mode.md) describes seeding `sTranslations` +
-> `currentlyLoadedLocale` during the render so `t()` server-renders. **That is permitted on
+> `currentlyLoadedLocale` during the render so `t()` server-renders. **That is recommended on
 > SvelteKit and not here.** `langsys-js-react` does re-export both settable signals, so the
 > code will look like it works. Measured **2026-08-30** against published
 > `langsys-js-react@0.6.7`, production builds.
@@ -91,14 +91,16 @@ Read [integrate/react.md](../integrate/react.md) first. This adds the server hal
 > resolve it from the fetched catalog directly — see
 > [core/rendering-mode.md](../core/rendering-mode.md#resolve-crawler-visible-text-through-a-pure-catalog-function).
 
-> ## For crawler-visible translated body copy, use `langsys-js-server`
+> ## For crawler-visible translated body copy, use the catalog function or `langsys-js-server`
 >
-> This track's seeding removes the flash and the second fetch. It does **not** translate the
-> server render — `t()` and the components render the base language during SSR, because the
-> catalog lives in module globals that only a client-only hook writes.
+> This track passes the catalog to `init()` through `initialTranslations`. That removes the
+> flash and the second fetch, but it does **not** translate the server render: on this track
+> we don't seed the store (see the box above), so `t()` and the components render the base
+> language during SSR.
 >
 > **`langsys-js-server` puts a request-scoped catalog on the server so `t()` resolves during the
-> render.** Read [core/server-sdk.md](../core/server-sdk.md) before choosing between them.
+> render.** Read [core/server-sdk.md](../core/server-sdk.md) before choosing between it and the
+> pure catalog function.
 >
 > `<Phrase>` and `<Translate>` are still client-only in its 0.1.0 — and **nothing signals that for
 > `<Translate>`**, since its host carries no marker. Check that document's capability matrix
@@ -112,7 +114,7 @@ Without seeding, the client fetches the catalog after hydration and re-renders �
 
 Fetch the catalog on the server, pass it to the client, seed it through `initialTranslations`.
 
-**What seeding does not do is translate the server render.** The server HTML carries base-language body copy either way; seeding removes the *flash* and the second fetch. Text that must be translated in the served HTML has to be resolved from the catalog directly — see §"Crawler-visible text" below.
+**What `initialTranslations` does not do is translate the server render.** On this track the server HTML carries base-language `t()` body copy; `initialTranslations` removes the *flash* and the second fetch. Text that must be translated in the served HTML has to be resolved from the catalog directly — see §"Crawler-visible text" below.
 
 ---
 

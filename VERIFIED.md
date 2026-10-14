@@ -1030,23 +1030,40 @@ category and joins Nuxt's: a safe shape exists and the idiomatic one violates it
 **Pin:** `3.6.17` — the upstream caution is now a measurement table rather than a paragraph
 of reasoning.
 
-### Open: the Nitro-hook result (found in review, 2026-10-14)
+### Resolved: the Nitro-hook result (found in review and re-measured, 2026-10-14)
 
-The Nuxt rows that came out clean (`app.vue` setup before any await, 0/80; synchronous page
-inside Suspense, 0/80) were measured with the seed in a **Nitro `request` hook**. On
-SvelteKit, seeding in a server hook and then awaiting before render bled **70/80**. Both put
-a hook and then an await ahead of the render, but they gave opposite results, and nobody has
-explained the difference.
+Raised in review: the clean Nuxt rows seeded in a Nitro `request` hook, while a SvelteKit
+`hooks.server.js` seed bled 70/80. Re-measured by the Vue owner; reported to me, not re-run
+here. Published `langsys-js-vue@0.2.1`, Nuxt **3.21.11 and 4.6.1**, `nuxt build` +
+`node .output/server/index.mjs`.
 
-Two candidate explanations, neither tested: Nuxt's pipeline really doesn't await between that
-hook and the render, or the clean result was masked, like the two harness traps recorded in
-`verify.md` (a layout seed hiding a hook seed, and a pending boundary producing a uniform
-answer). **Treated as unconfirmed until re-measured.** The Nuxt recommendation, request
-scoping, doesn't depend on it. Only the claim that a safe position exists does, and the guide
-now says it is unconfirmed.
+| Read after… | warm (2 runs × 2 versions) | cold (first traffic) | in flight |
+|---|---|---|---|
+| `app.vue` setup, before any await | 0/80 every run | 0/80 every run | 80 (cold Nuxt 4: 53–80) |
+| sync page in `<NuxtPage>` Suspense | 0/80 | 0/80 | 80 |
+| **positive control**: page awaits a 0–15ms timer | **66–70/80** | **68–71/80** | 80 |
+| page: 25 × `await Promise.resolve()` | 0/80 | 0/80 | 80 |
 
-The earlier comparison here ("Nuxt has the identical safe shape" to Pages Router) is
-withdrawn above: the Pages Router seed was in the component body.
+**Not masked.** Every write to both stores was counted by wrapping `set`/`update` at plugin
+load: zero foreign writes, exactly 2 hook writes per request. The positive control and the
+clean `app.vue` read come from **the same responses**. Cold runs were each process's first
+traffic, which rules out warm route chunks.
+
+**Mechanism: the window opens on an event-loop turn, not on an `await`.** A seed-generation
+counter recorded, per read, how many other requests seeded between its own seed and its read.
+Nitro hook path: zero, everywhere. Positive control: 79/80 reads had interleaved seeds, and
+every bleed had one behind it. Microtask-only awaits: zero interleaved, zero bleeds.
+
+**Carried with it:** the safe position depends on Nitro's hook-to-render path containing no
+loop turn, which is internal behavior, so it is pinned to the versions measured. The SvelteKit
+explanation (that `resolve()` contains a loop turn) is **inferred**, not measured. And the
+guidance deliberately does not teach "microtask awaits are fine", because a user can't tell
+from a call site whether an await turns the loop. A catalog promise *shared across requests*
+was not measured and plausibly breaks even at microtask granularity.
+
+**The instrument is the finding.** Write-counting turns "nothing else writes" from an
+assumption into a number. The generation counter explains a result instead of just counting
+it. Both belong in any future concurrency harness.
 
 ### Review of the 2026-10-14 commits, recorded as an instance of the coherence rule
 
@@ -1062,6 +1079,46 @@ server HTML" and told readers to verify "never with `curl`".
 This is the rule recorded below ("the edit that fixes a defect is where the next one lands"),
 happening to the session that wrote the rule. Each new section was verified, and nobody
 reread the file around it. Fixed in the commit after b75eca0.
+
+### Watch: unreleased `838` work supersedes the SSR answers here (reported 2026-10-14)
+
+A remote developer is working across every SDK repo on `838` branches. Reported by the React
+and Svelte owners from `git fetch --all`; **unreleased and not verified here**. Recorded so the
+next pin bump knows what to expect, not as guidance.
+
+- **React** (`838_write_gating_reland`): a `langsys-js-react/server` entry with
+  `createRequestScope` / `renderInRequestScope`, documented as rendering each request in its
+  own locale under the App Router. Its harness keeps the process-global seed as the measured
+  control. If that ships, the pure catalog function stops being App Router's answer.
+- **Svelte** (`838_write_key_gating_reland`, `838_var_preprocessor_wip`): new
+  `/kit`, `/kit/server` and `/preprocess` entry points, with `createLangsysHandle` in
+  `hooks.server.ts` opening a per-request AsyncLocalStorage scope. Their number: 800
+  concurrent renders that await before reading, 0 wrong. **That inverts "never seed in a
+  hook"** (the bare seed still bleeds, but the scoped handle doesn't), so `ssr/sveltekit.md`
+  carries a version gate. Listed upgrade breaks: `@sveltejs/kit` ≥ 2.10 becomes an optional
+  peer, **locales come back lowercase** (`en-us`), `detectPreferredLocale()` returns `false`
+  on no match, `<Translate>`/`<Phrase>` only register content through `langsysPreprocess()`,
+  and some block ids move.
+- **Server** (`838_write_key_gating`): stamps `data-ls-contentblock="<custom_id>"` on
+  `<Translate>` hosts (`stampContentBlock()`, `CONTENT_BLOCK_MARKER_EMIT`), renders
+  `<Translate>` server-side and unparks `<Phrase>`. When it ships, the "host carries no
+  marker" lines in `core/server-sdk.md` and the Next and Nuxt tracks, plus the matrix's
+  "base language" cells, become false. **Don't merge two claims when fixing them:**
+  `auditRenderedHtml()` is unchanged there and still defaults content-block markers to `[]`,
+  so "has a marker" and "the audit reports it" become separate statements.
+- **React's older `838_write_gating_react_surface_and_testbed`** forks from before the
+  SSR corrections and edits the same files. It looks superseded by the reland branch but
+  isn't confirmed. Darryl should confirm before anyone merges it.
+
+**How to check a restructured branch.** The typescript owner nearly reported 838 as missing
+three features because their probe searched the file the code *used* to live in. 838 had moved
+it to a new `identity.ts`. The probe's control on `origin/main` passed, which made it look
+trustworthy. A control on the old layout says nothing about a branch that restructured, so
+search by symbol across the whole tree, not by the file a map drawn from `main` points at.
+
+When `838` ships: re-verify against the published tarballs, rewrite the React and Svelte
+SSR tracks around request scope, version-gate the old answers rather than deleting them, and
+recheck every `'en-US'` comparison in the samples.
 
 ### Provenance: a reasoned claim must not be phrased like a measured one
 

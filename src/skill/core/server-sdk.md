@@ -18,8 +18,9 @@ In React, Vue and Svelte, `init()` runs in a client-only hook, so on its own it 
 server render in the **base language**. Passing `initialTranslations` to `init()` doesn't change
 that; it removes the flash and the second fetch. On **SvelteKit**, seeding the store in the
 layout body *does* make `t()` server-render, and it's safe there; see
-[rendering-mode.md](./rendering-mode.md). On React and Vue, seeding the store isn't safe in
-practice (and doesn't work at all on the Next App Router). This package puts a
+[rendering-mode.md](./rendering-mode.md). On the React and Vue tracks the guidance is not to seed the
+store: it's easily broken by any await before a read, and doesn't work at all on the Next App
+Router. This package puts a
 **request-scoped** catalog on the server so `t()` resolves during the render without relying on
 any of that.
 

@@ -27,19 +27,30 @@
 > read**. `renderToString` is async but runs synchronously until its first `await`, and a
 > fully synchronous tree completes inside that prefix.
 >
-> **So this is "unsafe in practice", not "structurally forbidden".** The rows above show
-> clean results for reads in `app.vue` setup above any await, even with Suspense-wrapped
-> routes below. Don't rely on them yet, for two reasons.
+> **So this is "unsafe in practice", not "structurally forbidden".** A safe position exists,
+> re-measured 2026-10-14 on Nuxt **3.21.11 and 4.6.1**, warm and cold: seed in a Nitro
+> `request` hook, then read in `app.vue` setup before any await, or in a synchronous page.
+> **0/80 every run**, with 80 requests witnessed in flight. The hook was confirmed as the
+> only writer by wrapping `set`/`update` on both stores (zero foreign writes). A positive
+> control bled 66–71/80 *in the same responses*, so the harness can detect bleeding.
 >
-> **Those rows seeded in a Nitro `request` hook, and that result is unexplained.** On
-> SvelteKit, seeding in a server hook and then awaiting before render bled 70/80. Nuxt's request
-> pipeline should also await between its hooks and the render (reasoned from its design, not
-> verified), so a clean 0/80 here is either a real
-> difference between the frameworks or a masked result, like the two harness traps in
-> [verify.md](../verify.md). Until someone explains it or re-measures it, treat the safe
-> position as unconfirmed.
+> **Why a Nitro hook is safe and a SvelteKit `hooks.server.js` seed bled 70/80:** the window
+> opens on an **event-loop turn** (a timer or I/O callback), not on an `await` as such.
+> That's the only point where another request's code can run. A seed-generation counter
+> showed zero other seeds landing between seed and read on Nitro's hook-to-render path, and
+> every bleed in the control had one. Microtask-only awaits drained without opening it
+> (25 × `await Promise.resolve()`: 0/80). *(The SvelteKit side of that explanation is
+> inferred: its 70/80 is consistent with `resolve()` containing a loop turn, but nobody has
+> measured it with the counter.)*
 >
-> **And even taken at face value, it's one line from collapsing:** adding `await useAsyncData`, which is *the* idiomatic way a Nuxt
+> **Two strings attached.** It depends on Nitro's hook-to-render path having no event-loop
+> turn. That's Nuxt-internal behavior, not a documented guarantee, so pin it to the versions
+> above. And **don't read "microtask awaits are fine" into it**: from a call site you can't
+> tell whether an await turns the loop (`fetch`, a DB client, a cache hit versus a miss), and
+> that can change between versions. The rule you follow stays **no await between the seed
+> and the read**.
+>
+> **And it's one line from collapsing:** adding `await useAsyncData`, which is *the* idiomatic way a Nuxt
 > app fetches, took that exact position from 0/80 to 67/80. And every routed page that awaits
 > anything is unsafe regardless, which is most real pages.
 >
@@ -67,14 +78,16 @@ Read [integrate/vue.md](../integrate/vue.md) first. This adds the server half.
 > resolve it from the fetched catalog directly — see
 > [core/rendering-mode.md](../core/rendering-mode.md#resolve-crawler-visible-text-through-a-pure-catalog-function).
 
-> ## For crawler-visible translated body copy, use `langsys-js-server`
+> ## For crawler-visible translated body copy, use the catalog function or `langsys-js-server`
 >
-> This track's seeding removes the flash and the second fetch. It does **not** translate the
-> server render — `t()` and the components render the base language during SSR, because the
-> catalog lives in module globals that only a client-only hook writes.
+> This track passes the catalog to `init()` through `initialTranslations`. That removes the
+> flash and the second fetch, but it does **not** translate the server render: on this track
+> we don't seed the store (see the box above), so `t()` and the components render the base
+> language during SSR.
 >
 > **`langsys-js-server` puts a request-scoped catalog on the server so `t()` resolves during the
-> render.** Read [core/server-sdk.md](../core/server-sdk.md) before choosing between them.
+> render.** Read [core/server-sdk.md](../core/server-sdk.md) before choosing between it and the
+> pure catalog function.
 >
 > `<Phrase>` and `<Translate>` are still client-only in its 0.1.0 — and **nothing signals that for
 > `<Translate>`**, since its host carries no marker. Check that document's capability matrix

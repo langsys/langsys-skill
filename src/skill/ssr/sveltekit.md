@@ -5,7 +5,8 @@ Read [integrate/svelte.md](../integrate/svelte.md) first. This adds the server h
 > ## `t()` server-renders here once you seed the store in the layout body
 >
 > §2 is the step that does it: set `sTranslations` and `currentlyLoadedLocale` synchronously
-> in the root layout's component body, and every `$t()` in the tree resolves during SSR. On
+> in the component body of the layout that owns the `load` (here
+> `src/routes/[[lang=lang]]/+layout.svelte`), and every `$t()` in the tree resolves during SSR. On
 > SvelteKit this is the recommended path. It is safe because the default renderer cannot
 > yield, and it is measured clean under concurrent load.
 >
@@ -44,7 +45,7 @@ import adapter from '@sveltejs/adapter-node';        // or -cloudflare, -vercel,
 export default { kit: { adapter: adapter() } };
 ```
 
-If static is a hard constraint, prerender **per locale** under `/[lang]/` — the seeding and the pure-catalog lookup both work unchanged at build time; only freshness differs.
+If static is a hard constraint, prerender **per locale** under `/[lang]/` — the seeding and the pure-catalog lookup should both work at build time (reasoned, not measured; check the built HTML with `ssr-i18n-check`). Only freshness differs.
 
 ```ts
 // src/routes/[lang]/+layout.ts
@@ -80,11 +81,18 @@ export const load: LayoutServerLoad = async ({ params, cookies, request, fetch }
     const locale =
         [params.lang, cookies.get('locale'), negotiated].find(isOfferable) ?? BASE;
 
-    const res = await fetch(
-        `https://api.langsys.dev/api/translations?project_id=${LANGSYS_PROJECT_ID}&locale=${locale}`,
-        { headers: { 'X-API-KEY': LANGSYS_API_KEY } },
-    );
-    const translations = res.ok ? (await res.json())?.data ?? null : null;
+    // A failed fetch must yield null, never throw: a throw here becomes SvelteKit's error
+    // page, which is total content loss. Null takes the seed's reset path to base language.
+    let translations = null;
+    try {
+        const res = await fetch(
+            `https://api.langsys.dev/api/translations?project_id=${LANGSYS_PROJECT_ID}&locale=${locale}`,
+            { headers: { 'X-API-KEY': LANGSYS_API_KEY } },
+        );
+        translations = res.ok ? (await res.json())?.data ?? null : null;
+    } catch (err) {
+        console.error('[langsys] catalog fetch failed', { locale, err });
+    }
 
     return { locale, initialTranslations: translations, langsysReady: !!translations };
 };
@@ -122,15 +130,22 @@ in `onMount`, which never executes on the server and, on the client, lands *afte
 hydration — so the browser hydrates base-locale text over whatever the server emitted.
 
 ```ts
-// src/lib/langsys-seed.ts
+// src/lib/langsys-seed.ts — type-checks under strict mode against langsys-js-svelte@3.6.17
 import { sTranslations, currentlyLoadedLocale, LangsysApp } from 'langsys-js-svelte';
+import type { iCategories } from 'langsys-js-svelte';
 import { browser } from '$app/environment';
 
-const EMPTY = {
-    __uncategorized__: { __category__: '__uncategorized__', __symbol__: '__uncategorized__' },
-};
+// Your base locale. Must match BASE in +layout.server.ts.
+const BASE = 'en-US';
 
-export function seedTranslations(translations, locale) {
+const emptyCatalog = (): iCategories => ({
+    __uncategorized__: { __category__: '__uncategorized__', __symbol__: '__uncategorized__' },
+}) as unknown as iCategories;
+
+export function seedTranslations(
+    translations: Record<string, Record<string, unknown>> | null | undefined,
+    locale: string | null | undefined,
+): boolean {
     // RESET on the miss path — never return early, and never store a nullish
     // catalog. Two reasons, both load-bearing:
     //  1. The store is a per-process singleton. Leaving it as-is renders THIS
@@ -141,21 +156,24 @@ export function seedTranslations(translations, locale) {
     //     instead of falling back. `load` returns null on a failed fetch; this
     //     branch turns that into an empty catalog so the store never holds null.
     if (!translations || !locale) {
-        sTranslations.set(structuredClone(EMPTY));
-        currentlyLoadedLocale.set(locale ?? '');
+        sTranslations.set(emptyCatalog());
+        currentlyLoadedLocale.set(BASE);   // the base locale, not the one requested
         console.error('[langsys] catalog missing; reset to base locale', { locale });
         return false;
     }
 
     // COPY before stamping markers. The loader's object is a shared cache entry and
     // is serialized into the client payload; mutating it in place edits both.
-    const catalog = {};
+    const catalog: Record<string, Record<string, unknown>> = {};
     for (const [category, phrases] of Object.entries(translations)) {
         catalog[category] = { ...phrases, __category__: category };
     }
-    catalog.__uncategorized__ ??= structuredClone(EMPTY.__uncategorized__);
+    catalog.__uncategorized__ ??= {
+        __category__: '__uncategorized__',
+        __symbol__: '__uncategorized__',
+    };
 
-    sTranslations.set(catalog);
+    sTranslations.set(catalog as unknown as iCategories);
     currentlyLoadedLocale.set(locale);
 
     // Browser-only bookkeeping. It suppresses a redundant client refetch; writing it
@@ -166,7 +184,10 @@ export function seedTranslations(translations, locale) {
 ```
 
 ```svelte
-<!-- +layout.svelte — the call site is the rule, not a preference -->
+<!-- src/routes/[[lang=lang]]/+layout.svelte — the layout that OWNS the load above.
+     A seed in a different layout (e.g. src/routes/+layout.svelte) gets no
+     initialTranslations and resets every request. This is the top of the same <script>
+     that §2b continues; it is one file. -->
 <script lang="ts">
     import { untrack } from 'svelte';
     import { seedTranslations } from '$lib/langsys-seed';
@@ -177,7 +198,11 @@ export function seedTranslations(translations, locale) {
     // the whole tree; runs before hydration on the client. No `await` may precede it —
     // the render being synchronous is what stops another request interleaving.
     untrack(() => seedTranslations(data.initialTranslations, data.locale));
+
+    // … §2b's init() in onMount goes here, in the same script …
 </script>
+
+{@render children()}
 ```
 
 `untrack()` is there so Svelte 5 does not warn about reading `$props()` outside a closure;
@@ -247,9 +272,10 @@ Verified under load: 8 locales × 10 rounds, all in flight simultaneously agains
 > ```
 >
 > **Row 4 is the way almost anyone would write it** — `const data = await something;` and
-> then read. A layout that seeds in its body plus a page that awaits before reading *is*
-> row 4. So with this flag on, SvelteKit stops being structurally safe and joins Nuxt's
-> category: a safe shape exists, and the idiomatic one violates it.
+> then read. A layout that seeds in its body plus a page that awaits before reading should
+> behave like row 4 (reasoned; row 4 itself was a single script). So with this flag on,
+> SvelteKit stops being structurally safe and joins React and Vue: safe only by inspecting
+> the subtree, which nothing enforces.
 >
 > **Do not enable `experimental.async` with a module-global seed.** If you need it, use
 > request scoping. And note the failures converge on whichever request seeded last rather
@@ -271,6 +297,12 @@ export async function handle({ event, resolve }) {
 
 Anything that seeds server-side and then awaits before rendering has the window. The
 component body is the only position with no await between it and the tree it feeds.
+
+> **Version scope: this is about a *bare* seed, on `langsys-js-svelte` ≤ `3.6.17`.** An
+> unreleased line of work (`838`) adds a request-scoped handle that is meant to live in
+> `hooks.server.ts` and to make an await before a read safe. When it ships, the right answer
+> on that version *is* a hook, and this track will change. Until it's published and verified
+> here, nothing in this track applies to it, and nothing about it applies to `3.6.x`.
 
 > **If you reproduce this, remove the layout seed first.** The first measurement of this
 > scenario came back 0/80 and nearly reported hooks as safe — the test routes still inherited
@@ -468,6 +500,7 @@ Same shape: resolve locale, fetch the catalog before rendering, resolve crawler-
 |---|---|
 | `$t()` body copy is base language in `curl` output | Seed missing, misplaced (a hook, not the layout body), or reading the wrong `data` field. `ssr-i18n-check` in [verify.md](../verify.md) fails on this. `<Phrase>`/`<Translate>` copy staying base language is **expected** |
 | Head/meta is base language | Using `$t` in `<svelte:head>`; use the pure catalog lookup |
+| `t()` copy correct alone, wrong language under concurrent load | `compilerOptions.experimental.async` is on and a read follows an `await` in the same script. Turn it off, or use request scoping |
 | Server HTML shows a literal `{name}` or raw ICU | `ct` was shortened to a raw lookup — it must call `interpolate` |
 | A phrase renders but never appears in the Translation Manager | It renders only server-side; `ct` does not harvest missing tokens |
 | Seeding appears to do nothing | Only one of `initialTranslations` / `initialTranslationsLocale` passed — fails silently |
@@ -489,7 +522,7 @@ Same shape: resolve locale, fetch the catalog before rendering, resolve crawler-
 - [ ] `+layout.ts` carries flags only, not the catalog
 - [ ] Both `initialTranslations` and `initialTranslationsLocale` passed
 - [ ] `init()` inside `onMount`, never during SSR
-- [ ] Catalog seeded in the root layout's **component body**, never a `hooks.server.js` hook
+- [ ] Catalog seeded in the **component body of the layout that owns the `load`**, never a `hooks.server.js` hook
 - [ ] Seed's failure path **resets** the store; it never returns early
 - [ ] `compilerOptions.experimental.async` is off
 - [ ] No render gate that replaces the page; failure states overlay it
