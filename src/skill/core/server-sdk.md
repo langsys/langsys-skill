@@ -14,10 +14,14 @@ Verified against the published `langsys-js-server@0.1.0` tarball, installed from
 
 ## Why it exists
 
-In React, Vue and Svelte, `t()` / `<Phrase>` / `<Translate>` render the **base language** during
-SSR — `init()` runs in a client-only hook and the catalog lives in module globals only it writes.
-Seeding does not change that; it removes the flash and the second fetch. This package puts a
-**request-scoped** catalog on the server so `t()` resolves during the render.
+In React, Vue and Svelte, `init()` runs in a client-only hook, so on its own it leaves the
+server render in the **base language**. Passing `initialTranslations` to `init()` doesn't change
+that; it removes the flash and the second fetch. On **SvelteKit**, seeding the store in the
+layout body *does* make `t()` server-render, and it's safe there; see
+[rendering-mode.md](./rendering-mode.md). On React and Vue, seeding the store isn't safe in
+practice (and doesn't work at all on the Next App Router). This package puts a
+**request-scoped** catalog on the server so `t()` resolves during the render without relying on
+any of that.
 
 ## What 0.1.0 does and does not do
 

@@ -14,11 +14,10 @@
 > **`getServerSideProps` runs *before* render**, so the idiomatic Pages Router shape puts the
 > await *before* the seed rather than between seed and read. **This is idiom, not
 > architecture** — React is not structurally safer. Force an `await` into that same app's
-> render body and it bleeds **70/80**, identically to streaming. Nuxt has the same safe shape
-> available (seed in a Nitro `request` hook, synchronous page — measured 0/80); it is simply
-> off its idiomatic path, because `useAsyncData` is how Nuxt teaches fetching and it awaits
-> inside `setup()`. **Same rule, different priors: safe-by-default here, near-certain
-> violation there.**
+> render body and it bleeds **70/80**, identically to streaming. Nuxt is the contrast: its
+> idiomatic fetch, `useAsyncData`, awaits *inside* `setup()`, which is exactly between the
+> seed and the reads. **Same rule, different idioms: Pages Router's usual shape keeps the
+> await before the seed, Nuxt's usual shape puts it in the middle.**
 >
 > **2. Streaming with any suspension between seed and read — unsafe, 70/80 wrong.**
 > The renderer is not the problem: `renderToPipeableStream` over a *synchronous* tree is
@@ -72,9 +71,9 @@
 >
 > **Never touch the global stores from a Server Component.**
 >
-> **Hazard 2 applies to all three, regardless of renderer.** See "the failure path must
-> reset" in [core/rendering-mode.md](../core/rendering-mode.md); it bit under the
-> *synchronous* renderer, so passing verdict 1 buys no protection from it.
+> **Condition 3 (reset on failure) applies to all three, regardless of renderer.** See "the
+> failure path must reset" in [core/rendering-mode.md](../core/rendering-mode.md). It bit
+> under the *synchronous* renderer, so passing verdict 1 buys no protection from it.
 
 
 
@@ -84,8 +83,9 @@ Read [integrate/react.md](../integrate/react.md) first. This adds the server hal
 > Public site → SSR; app behind a login → client-only with a ready gate, and skip this track.
 >
 > **Know what SSR does and does not give you here.** `t()`, `<Phrase>` and `<Translate>`
-> render the **base language** during server rendering — `init()` runs in a client-only
-> hook, so the catalog is never populated on the server, and seeding does not change that.
+> render the **base language** during server rendering on this track. `init()` runs in a
+> client-only hook, passing it `initialTranslations` doesn't change that, and seeding the store
+> directly isn't recommended here (see the box above).
 > This track buys one catalog fetch instead of two, no flash after hydration, and a
 > *current* catalog per request. For text a crawler or a social scraper must read,
 > resolve it from the fetched catalog directly — see
@@ -296,7 +296,7 @@ All three checked against the published `langsys-js-typescript@0.6.5`:
 
 ## Crawler-visible text
 
-Because the reactive primitives are inert during SSR, anything a crawler or a social scraper must read has to come from the fetched catalog directly. It is a pure lookup, so none of the singleton's problems apply:
+Because this track doesn't seed the store, the reactive primitives render base language during SSR, so anything a crawler or a social scraper must read has to come from the fetched catalog directly. It is a pure lookup, so none of the singleton's problems apply:
 
 ```ts
 import { interpolate } from 'langsys-js-typescript';
@@ -330,7 +330,7 @@ Use `makeCatalogT(catalog, locale)` for `<title>`, `<meta name="description">`, 
 | Hydration mismatch | Server and client resolved different locales — resolve once on the server and pass it down |
 | Works in dev, not in prod | Write key in dev vs read-only in prod, and the phrase was never registered. Exercise it in dev first |
 | Key visible in the client bundle | Server-only fetch should use unprefixed env vars |
-| Body copy is base language in `curl` output | **Expected** — `t()` is inert during SSR. Verify in a browser |
+| `t()` body copy is base language in `curl` output | **Expected on this track**, which doesn't seed the store. Verify body copy in a browser; head tags and anything from the pure catalog function *should* be translated in `curl` |
 | Head/meta is base language | Using `t()` for head fields; use the pure catalog lookup |
 | Wrong locale served under load | `init()` called during SSR — module globals raced across requests |
 | Catalog request 422s: "not a base or target locale" | A bare `es` where the project offers `es-CR`, or `supportedLocales` built from the global CLDR list |

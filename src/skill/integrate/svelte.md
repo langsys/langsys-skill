@@ -243,7 +243,8 @@ Only identifiers match (`%[A-Za-z_][A-Za-z0-9_]*%`), so "50% off" and `width: 10
 
 ```svelte
 $effect(() => {
-    LangsysApp.translationsLoadingPromise.then(() => { /* … */ });
+    // Settles on failure too; it doesn't prove a catalog arrived. See core/init-config.md.
+    LangsysApp.translationsLoadingPromise.then(() => { /* change settled, success or not */ });
 });
 ```
 

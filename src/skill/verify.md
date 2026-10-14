@@ -102,7 +102,7 @@ Seeding writes to a per-process singleton, so both directions need proving:
 ## 2. Structural — inspect the diff
 
 - [ ] No `locales/*.json`, `messages/`, or any catalog file was created
-- [ ] Every `t()` first argument is a **string literal** — no template literals, concatenation, or `sprintf`
+- [ ] No phrase is **built** at the call site: no template substitution, concatenation, or `sprintf`. Passing a whole string through a variable (from a CMS, say) is fine
 - [ ] `t(phrase, category)` order everywhere
 - [ ] `%name%` in component markup; `{name}` only inside `t()` strings
 - [ ] `<Translate>` / `<Phrase>` children are static

@@ -603,14 +603,14 @@ owner re-ran and retracted their own derivation before it went further than one 
 any `t()` read. Frameworks differ only in how likely a violation is, and whether a caller
 can guarantee its absence.
 
-- **SvelteKit** — permitted; satisfiable by inspection.
+- **SvelteKit** — permitted; satisfiable by inspection. *(Superseded: the Svelte re-measurement below found it structurally guaranteed in the default renderer, with two exceptions, hook seeding and `experimental.async`.)*
 - **Nuxt** — a safe position exists (`app.vue` setup above any await, even with
   Suspense-wrapped routes below) but collapses the moment anyone writes `await
   useAsyncData`, which took that exact position from 0/80 to 67/80. **Unsafe in practice,
   not structurally forbidden** — and the distinction matters for the document's credibility:
   a reader who tests the narrow safe case, finds it working, and has been told it is
   impossible will stop trusting the rest.
-- **Next Pages Router** — same shape: satisfiable, easily broken.
+- **Next Pages Router** — same shape: satisfiable, easily broken. *(Superseded: safe by idiom, not architecture; see below.)*
 - **Next App Router** — a different failure; see below.
 
 **This corrected a claim in this skill within 48 hours of writing it.** `rendering-mode.md`
@@ -618,7 +618,7 @@ condition 2 originally read "no `await` before the seed". The measured boundary 
 suspension anywhere between the seed and any `t()` read* — a subtree property, not a
 statement about the line you write. The Svelte 0/80 came from one production app that
 happened not to contain that shape; a SvelteKit-specific `{#await}` re-measurement is in
-flight.
+flight. *(Done; see "Svelte re-measured" below.)*
 
 **Two properties worth more than the counts:**
 
@@ -664,7 +664,9 @@ after it was first reported as architectural. `getServerSideProps` runs *before*
 the default shape puts the await before the seed. But forcing an `await` into that same
 app's render body bleeds 70/80, and **Nuxt has the identical safe shape available** — seed
 in a Nitro `request` hook with a synchronous page, measured 0/80. Nuxt's safe path simply
-is not the one its own docs teach. Same rule everywhere; the frameworks differ in their
+is not the one its own docs teach. *(Withdrawn 2026-10-14: the Pages Router seed was in the
+component body, while that Nuxt seed was in a request hook, so they're not the same shape.
+And a hook seed bled 70/80 on SvelteKit; see "Open: the Nitro-hook result" below.)* Same rule everywhere; the frameworks differ in their
 *priors*, not their capabilities: safe-by-default on Pages Router, near-certain violation on
 Nuxt.
 
@@ -761,7 +763,10 @@ deliberately broken) proving the harness detects bleeds on this stack.
 **The caveat published here was too pessimistic.** This file said the Svelte result might be
 a property of the reference codebase rather than the framework. It is the framework:
 `render()` from `svelte/server` returns a string, not a Promise, and cannot yield, so **no
-component-tree construction can place a suspension between seed and read**. The condition is
+component-tree construction can place a suspension between seed and read**. *(Superseded
+twice: it returns a `RenderOutput`, fully populated synchronously only in the default
+renderer, and `experimental.async` with a read after an await in the same script does
+suspend; see the resolution below.)* The condition is
 structurally guaranteed and survives refactors.
 
 **A real trap was found that nobody had asked about.** Seeding in a `handle` hook — the
@@ -1012,9 +1017,10 @@ The turn-20 harness was row 3: a true result about a shape that cannot bleed.
 
 **What does not survive is the sentence built on it** — *"there is no component-tree
 construction in Svelte that puts an await between seed and read"* is false, and that absolute
-is why a too-weak conclusion survived four upstream releases. This skill had already scoped
-both of its statements to "the default renderer" before the resolution arrived, so neither was
-wrong; the guidance is now the measured table.
+is why a too-weak conclusion survived four upstream releases. This skill's guides had already
+scoped their statements to "the default renderer" before the resolution arrived. This file's
+own earlier entry ("Svelte re-measured") had not, and now carries a superseded note. The
+guidance is now the measured table.
 
 **Consequence for the recommendation:** row 4 is how almost anyone writes it — `const data =
 await something;` then read. A layout seeding in its body plus a page that awaits before
@@ -1023,6 +1029,39 @@ category and joins Nuxt's: a safe shape exists and the idiomatic one violates it
 
 **Pin:** `3.6.17` — the upstream caution is now a measurement table rather than a paragraph
 of reasoning.
+
+### Open: the Nitro-hook result (found in review, 2026-10-14)
+
+The Nuxt rows that came out clean (`app.vue` setup before any await, 0/80; synchronous page
+inside Suspense, 0/80) were measured with the seed in a **Nitro `request` hook**. On
+SvelteKit, seeding in a server hook and then awaiting before render bled **70/80**. Both put
+a hook and then an await ahead of the render, but they gave opposite results, and nobody has
+explained the difference.
+
+Two candidate explanations, neither tested: Nuxt's pipeline really doesn't await between that
+hook and the render, or the clean result was masked, like the two harness traps recorded in
+`verify.md` (a layout seed hiding a hook seed, and a pending boundary producing a uniform
+answer). **Treated as unconfirmed until re-measured.** The Nuxt recommendation, request
+scoping, doesn't depend on it. Only the claim that a safe position exists does, and the guide
+now says it is unconfirmed.
+
+The earlier comparison here ("Nuxt has the identical safe shape" to Pages Router) is
+withdrawn above: the Pages Router seed was in the component body.
+
+### Review of the 2026-10-14 commits, recorded as an instance of the coherence rule
+
+A correctness review of the SSR rewrite found that the new sections were right but **older
+sections in the same files had never been updated**, and still said the opposite.
+`ssr/sveltekit.md` opened with a banner saying seeding does "not translate the server
+render", four lines above the section saying it does. Its checklist still required a render
+gate that §3 prohibits. Its own seed sample read `data.translations` when `load` returned
+`initialTranslations`, so every request took the reset path and rendered base language.
+`rendering-mode.md` still said the pure function was "the only way to put translated text in
+server HTML" and told readers to verify "never with `curl`".
+
+This is the rule recorded below ("the edit that fixes a defect is where the next one lands"),
+happening to the session that wrote the rule. Each new section was verified, and nobody
+reread the file around it. Fixed in the commit after b75eca0.
 
 ### Provenance: a reasoned claim must not be phrased like a measured one
 

@@ -14,6 +14,16 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 ## Unreleased
 
 ### Fixed
+- **The SSR rewrite left older text in the same files saying the opposite.** Found in
+  review: `ssr/sveltekit.md`'s banner, §0, §4, common-failures table and checklist still said
+  seeding doesn't server-render, and the checklist still required the render gate §3
+  prohibits. `rendering-mode.md` still called the pure function "the only way" and said
+  "never with `curl`". All brought in line. Also fixed the §2 sample, which seeded from
+  `data.translations` while `load` returned `initialTranslations`, so every request reset to
+  base language. Stopped calling Nuxt "prohibited". Removed a stale "being re-measured" note.
+  Fixed `verify.md`'s "string literal" checklist item, and the three remaining
+  `translationsLoadingPromise` sites. Marked the Nuxt Nitro-hook result as unexplained,
+  because a hook seed bled 70/80 on SvelteKit.
 - **`invariants.md` said "the phrase argument must always be a literal."** The lint rules
   never enforced that; they flag *construction* (template substitution, concatenation,
   `sprintf()`, PHP `"$var"`), not a variable argument. The real rule is cardinality:
@@ -48,9 +58,9 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
   has succeeded the singleton is poisoned, and a later total outage mislabels every locale
   rather than none.
 - **SSR catalog seeding is now framework-scoped, measured rather than assumed.** Permitted
-  on SvelteKit; **unsafe in practice on Nuxt** — a safe position exists (`app.vue` setup
-  above any await) but `await useAsyncData`, the idiomatic Nuxt fetch, takes it from 0/80 to
-  67/80; **non-functional on the Next App Router**, where Server and
+  on SvelteKit; **unsafe in practice on Nuxt** — a possible safe position (`app.vue` setup
+  above any await) is unconfirmed, and `await useAsyncData`, the idiomatic Nuxt fetch, takes
+  it from 0/80 to 67/80 anyway; **non-functional on the Next App Router**, where Server and
   Client Components hold separate module instances so the seed lands in a graph the reader
   is not in — 100% of non-base locales wrong at concurrency 1. The operative rule is *no
   suspension between the seed and any `t()` read*, which is a subtree property, not a
@@ -58,7 +68,6 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 - **The pure catalog helper is re-ranked, not demoted.** It ranks first on App Router and
   Nuxt: holding no module state, it is immune to both cross-request leakage and the
   module-graph split by construction.
-
 - **SSR guidance was wrong about `t()`, and it cost seven production sites their search
   visibility.** `core/rendering-mode.md` claimed all four primitives render base language
   during SSR "always" and that seeding the catalog server-side was an unavoidable data
@@ -77,9 +86,6 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 - **`ssr/sveltekit.md` recommended a render gate.** A replacing loading/error state is
   server-rendered on a slow or failed fetch, so a crawler indexes the spinner as the page.
   Failure states now overlay, never replace.
-- **`ssr/nextjs.md` and `ssr/nuxt.md`** carry an explicit marker: the seeding exports exist
-  in React and Vue, but the synchronous-render safety argument is unverified there
-  (streaming SSR with Suspense, `async setup()`).
 - **`VERIFIED.md` contained two tables that contradicted each other.** The `Defect status`
   table still called `langsys/langsys-php` unpublished and four Svelte/Vue fixes
   *"fixed, unreleased"*, while the table above it recorded all of them as RESOLVED. Re-checked

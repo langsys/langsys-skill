@@ -1,11 +1,11 @@
 # SSR — Nuxt
 
 
-> ### ⛔ Do NOT seed the catalog store during SSR here — measured unsafe
+> ### ⛔ Don't seed the catalog store during SSR here — unsafe in practice
 >
 > [core/rendering-mode.md](../core/rendering-mode.md) describes seeding `sTranslations` +
-> `currentlyLoadedLocale` during the render so `t()` server-renders. **That is permitted on
-> SvelteKit and prohibited here.** `langsys-js-vue` does re-export both settable signals, so the
+> `currentlyLoadedLocale` during the render so `t()` server-renders. **That is recommended on
+> SvelteKit and not recommended here.** `langsys-js-vue` does re-export both settable signals, so the
 > code will look like it works — and it does, until two requests overlap.
 >
 > **Measured 2026-08-30** against published `langsys-js-vue@0.2.1`. Bare Vue SSR first,
@@ -27,9 +27,19 @@
 > read**. `renderToString` is async but runs synchronously until its first `await`, and a
 > fully synchronous tree completes inside that prefix.
 >
-> **So this is "unsafe in practice", not "structurally forbidden".** A safe position exists —
-> reads in `app.vue` setup above any await, even with Suspense-wrapped routes below. It is
-> one line from collapsing: adding `await useAsyncData`, which is *the* idiomatic way a Nuxt
+> **So this is "unsafe in practice", not "structurally forbidden".** The rows above show
+> clean results for reads in `app.vue` setup above any await, even with Suspense-wrapped
+> routes below. Don't rely on them yet, for two reasons.
+>
+> **Those rows seeded in a Nitro `request` hook, and that result is unexplained.** On
+> SvelteKit, seeding in a server hook and then awaiting before render bled 70/80. Nuxt's request
+> pipeline should also await between its hooks and the render (reasoned from its design, not
+> verified), so a clean 0/80 here is either a real
+> difference between the frameworks or a masked result, like the two harness traps in
+> [verify.md](../verify.md). Until someone explains it or re-measures it, treat the safe
+> position as unconfirmed.
+>
+> **And even taken at face value, it's one line from collapsing:** adding `await useAsyncData`, which is *the* idiomatic way a Nuxt
 > app fetches, took that exact position from 0/80 to 67/80. And every routed page that awaits
 > anything is unsafe regardless, which is most real pages.
 >
@@ -38,9 +48,9 @@
 > Not because Nuxt forbids the seed, but because a Nuxt app that never awaits above its
 > translated reads is not a Nuxt app anyone writes.
 
-> **Hazard 2 applies here regardless of renderer.** See "the failure path must reset" in
-> [core/rendering-mode.md](../core/rendering-mode.md); it bit under the *synchronous*
-> renderer too, so passing the concurrency test above buys no protection from it.
+> **Condition 3 (reset on failure) applies here regardless of renderer.** See "the failure
+> path must reset" in [core/rendering-mode.md](../core/rendering-mode.md). It bit under the
+> *synchronous* renderer too, so passing the concurrency test above buys no protection from it.
 
 
 Read [integrate/vue.md](../integrate/vue.md) first. This adds the server half.
@@ -49,8 +59,9 @@ Read [integrate/vue.md](../integrate/vue.md) first. This adds the server half.
 > Public site → SSR; app behind a login → client-only with a ready gate, and skip this track.
 >
 > **Know what SSR does and does not give you here.** `t()`, `<Phrase>` and `<Translate>`
-> render the **base language** during server rendering — `init()` runs in a client-only
-> hook, so the catalog is never populated on the server, and seeding does not change that.
+> render the **base language** during server rendering on this track. `init()` runs in a
+> client-only hook, passing it `initialTranslations` doesn't change that, and seeding the store
+> directly isn't recommended here (see the box above).
 > This track buys one catalog fetch instead of two, no flash after hydration, and a
 > *current* catalog per request. For text a crawler or a social scraper must read,
 > resolve it from the fetched catalog directly — see
@@ -179,7 +190,7 @@ All three checked against the published `langsys-js-typescript@0.6.5`:
 
 ## Crawler-visible text
 
-Because the reactive primitives are inert during SSR, anything a crawler or a social scraper must read has to come from the fetched catalog directly. It is a pure lookup, so none of the singleton's problems apply:
+Because this track doesn't seed the store, the reactive primitives render base language during SSR, so anything a crawler or a social scraper must read has to come from the fetched catalog directly. It is a pure lookup, so none of the singleton's problems apply:
 
 ```ts
 import { interpolate } from 'langsys-js-typescript';
@@ -212,7 +223,7 @@ Use `makeCatalogT(catalog, locale)` for `<title>`, `<meta name="description">`, 
 | Hydration mismatch | Locale re-detected on the client — use `useState` so it transfers |
 | Two catalog requests | Seeding missing, or `useFetch` re-running client-side |
 | Write key in the browser | `public` runtime config should carry the read-only key only |
-| Body copy is base language in `curl` output | **Expected** — `t()` is inert during SSR. Verify in a browser |
+| `t()` body copy is base language in `curl` output | **Expected on this track**, which doesn't seed the store. Verify body copy in a browser; head tags and anything from the pure catalog function *should* be translated in `curl` |
 | Head/meta is base language | Using `t()` in `useHead`; use the pure catalog lookup |
 | Wrong locale served under load | `init()` called during SSR — module globals raced across requests |
 

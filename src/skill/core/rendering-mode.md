@@ -130,21 +130,19 @@ violate it, and in whether you can guarantee you have not.
   guaranteed rather than merely satisfiable. Two ways to lose it, both in
   [ssr/sveltekit.md](../ssr/sveltekit.md): seeding outside the render pass (`hooks.server.js`),
   and turning on `compilerOptions.experimental.async`.
-- **Nuxt** — a safe position exists (`app.vue` setup above any await) but it collapses the
-  moment anyone writes `await useAsyncData`, which is how Nuxt apps fetch. Unsafe *in
-  practice*, not structurally forbidden. Recommend request scoping.
-- **Next Pages Router / `renderToString`** — same shape as Nuxt: satisfiable, easily broken.
+- **Nuxt** — a clean result was measured for reads in `app.vue` setup above any await,
+  but with the seed in a Nitro hook, which bled on SvelteKit, so it's unexplained and
+  unconfirmed. Even taken at face value it collapses the moment anyone writes
+  `await useAsyncData`, which is how Nuxt apps fetch. Unsafe *in practice*, not
+  structurally forbidden. Recommend request scoping.
+- **Next Pages Router / `renderToString`** — safe by idiom, not architecture.
+  `getServerSideProps` fetches before render, so the usual shape has no await between the
+  body seed and the reads. Put an `await` in the render and it bleeds like anything else.
 - **Next App Router** — a different failure entirely; see below.
 
 Those needing request scoping want `langsys-js-server`, `AsyncLocalStorage`, or the pure
 catalog function — not a relocated seed. See [ssr/nextjs.md](../ssr/nextjs.md) and
 [ssr/nuxt.md](../ssr/nuxt.md).
-
-> **Svelte's row is being re-measured.** The 0/80 above came from one production platform
-> whose tree happened to have no suspension between seed and read. `{#await}` blocks are
-> ordinary SvelteKit, so the framework may permit the violating shape even though this app
-> did not exhibit it. Until that returns, treat condition 2 as the operative rule rather
-> than trusting the framework name.
 
 > **It converges — it does not scatter.** Every suspended request resumes after the others
 > have seeded, so they all read the *same* last writer. The result is a near-uniform wrong
@@ -189,8 +187,8 @@ Reach for the markup-bearing components only when a run genuinely contains inlin
 
 > **Rank depends on the framework, as of 2026-08-30.** On **SvelteKit**, prefer **seeding
 > the store** (above): free, no dependency, every existing `t()` call site server-renders
-> with no rewrite. On **React App Router and Nuxt, this helper ranks FIRST** — seeding is
-> prohibited there, and a pure function is immune to both failure modes by construction: it
+> with no rewrite. On **React App Router and Nuxt, this helper ranks FIRST** — seeding doesn't
+> work on App Router and isn't recommended on Nuxt, and a pure function is immune to both failure modes by construction: it
 > holds no module state, so there is no singleton to leak across requests and none to land
 > in the wrong module graph. Prefer **[`langsys-js-server`](./server-sdk.md)** over this helper if you want
 > request scoping as a structural property rather than as four conditions you must not
@@ -218,7 +216,7 @@ Reach for the markup-bearing components only when a run genuinely contains inlin
 > **burst of new registrations on first deploy**. That is the feature working. Do the first deploy
 > with a read-only key if you want to see the volume before committing to it.
 
-Four lines, no globals, safe under concurrency, and it is the only way to put translated text in server HTML in a JS framework:
+Four lines, no globals, safe under concurrency, and it works in every JS framework, including the two where seeding the store doesn't:
 
 ```ts
 import { interpolate } from 'langsys-js-typescript';
@@ -287,7 +285,7 @@ Still the right question, still a product question — but answer it knowing wha
 2. The client is seeded, so there is one catalog fetch instead of two, and no flash.
 3. Per-request locale resolution — cookie, header, URL — works at all.
 
-**Prerendering is not the trap I once described**, because it does not lose translated body copy: SSR never had it either. What it loses is freshness in the first column above — a phrase fixed today stays wrong in indexed head and SEO copy until the next build. If static is a hard constraint, prerender per locale and schedule rebuilds against translation updates.
+**Prerendering should keep seeded `t()` copy**, since it renders through the same SSR path. That's reasoned, not measured here, so check the built HTML with `ssr-i18n-check`. Like SSR, it never has `<Phrase>`/`<Translate>` copy. What it loses is freshness — a phrase fixed today stays wrong in indexed head and SEO copy until the next build. If static is a hard constraint, prerender per locale and schedule rebuilds against translation updates.
 
 **Client-only remains genuinely fine for an app.** No crawler, no seeding, no hydration reconciliation — one `init()`, one ready gate, done.
 
@@ -328,8 +326,8 @@ Still the right question, still a product question — but answer it knowing wha
 >
 > **Not framework-specific** — it is `persist()` plus init sitting behind an await. Note that
 > the client has **no cross-request concurrency hazard** (one browser, one user), so the
-> server-side prohibition on seeding does not automatically forbid a client-side body seed in
-> React or Vue. Whether that closes the flash there is **untested** — do not assume it does.
+> reasons not to seed on the React and Vue *servers* don't automatically apply to a
+> client-side body seed. Whether that closes the flash there is **untested** — do not assume it does.
 
 The gate is what prevents that flash: render the loader, not the stale locale, until `init()` resolves. **On a public, crawler-visible route the gate is prohibited instead** — a server-rendered spinner gets indexed as the page. See the SSR tracks.
 
@@ -344,9 +342,9 @@ The gate is what prevents that flash: render the loader, not the stale locale, u
 ## What to do with this
 
 1. Decide public vs. app **before** opening an `ssr/` track.
-2. Public → SSR, and resolve every crawler-visible string through the pure catalog function. The reactive primitives will not do it for you.
+2. Public → SSR. On SvelteKit, seed the store in the layout body so `t()` server-renders. On Next App Router or Nuxt, resolve crawler-visible strings through the pure catalog function or `langsys-js-server`. Either way, resolve head tags from the catalog directly.
 3. App → skip `ssr/` entirely. Gate on `ready` and move on.
 4. Static-only constraint → prerender per locale; indexed head copy is as fresh as the last build.
-5. **Verify in a real browser, never with `curl`.** Because body copy translates after hydration, `curl | grep` shows base language on a correctly working page *and* on a badly broken one. See [verify.md](../verify.md).
+5. **Which check works depends on whether server HTML is meant to be translated.** If it is (seeded SvelteKit, the pure function, `langsys-js-server`), `curl` is the check that matters: run `ssr-i18n-check`. If it isn't (client-only), `curl` shows base language whether the app works or not, so open a browser. See [verify.md](../verify.md).
 
 `scan` reports the deployment posture it detects, including whether the site is prerendered. It cannot tell you whether crawlers matter for your product. That part is yours.

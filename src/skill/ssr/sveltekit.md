@@ -2,28 +2,30 @@
 
 Read [integrate/svelte.md](../integrate/svelte.md) first. This adds the server half.
 
-> ## For crawler-visible translated body copy, use `langsys-js-server`
+> ## `t()` server-renders here once you seed the store in the layout body
 >
-> This track's seeding removes the flash and the second fetch. It does **not** translate the
-> server render — `t()` and the components render the base language during SSR, because the
-> catalog lives in module globals that only a client-only hook writes.
+> §2 is the step that does it: set `sTranslations` and `currentlyLoadedLocale` synchronously
+> in the root layout's component body, and every `$t()` in the tree resolves during SSR. On
+> SvelteKit this is the recommended path. It is safe because the default renderer cannot
+> yield, and it is measured clean under concurrent load.
 >
-> **`langsys-js-server` puts a request-scoped catalog on the server so `t()` resolves during the
-> render.** Read [core/server-sdk.md](../core/server-sdk.md) before choosing between them.
+> **`<Phrase>` and `<Translate>` stay base-locale in server HTML no matter what you seed.**
+> They translate by mounting onto rendered DOM in an effect, and effects don't run during
+> SSR. Expect a residue of untranslated prose from them, and keep plain text out of them.
 >
-> `<Phrase>` and `<Translate>` are still client-only in its 0.1.0 — and **nothing signals that for
-> `<Translate>`**, since its host carries no marker. Check that document's capability matrix
-> rather than assuming parity.
+> [`langsys-js-server`](../core/server-sdk.md) is the alternative if you want request scoping
+> as a structural property rather than conditions you maintain. It does not extend coverage:
+> its 0.1.0 is `t()`-only too.
 
 ## 0. What this track actually delivers
 
 **Read [core/rendering-mode.md](../core/rendering-mode.md) before this track.** The short version, because it is the thing most often misunderstood:
 
-> **`$t`, `<Phrase>` and `<Translate>` render the base language during SSR.** `init()` runs in `onMount`, which does not run on the server, so the catalog is never populated during the server render. Seeding does not change this.
+> **`init()` alone never populates the server render.** It runs in `onMount`, which doesn't run on the server. Passing `initialTranslations` to `init()` removes the second fetch and the flash, but the HTML is still base language. **The body seed in §2 is what makes `$t()` server-render.** `<Phrase>` and `<Translate>` stay base-locale either way.
 
-What this track gives you is **server-fetch, client-hydrate**: one catalog request instead of two, no flash after hydration, and a *current* catalog per request. It does **not** put translated body copy in the HTML by itself.
+What this track gives you: the server fetches the catalog once per request, §2 seeds it so `$t()` copy is translated in the served HTML, and `init()` takes over on the client with no second fetch.
 
-To put translated text in server HTML — for crawlers, and for social scrapers that never run JavaScript at all — resolve it from the fetched catalog with the pure function in [core/rendering-mode.md](../core/rendering-mode.md#resolve-crawler-visible-text-through-a-pure-catalog-function). §4 below shows it in place.
+For `<title>`, meta and Open Graph tags, also resolve directly from the fetched catalog with the pure function in [core/rendering-mode.md](../core/rendering-mode.md#resolve-crawler-visible-text-through-a-pure-catalog-function). That gives the one copy a crawler can't wait for a second path that doesn't depend on the store. §4 shows it.
 
 ### Is there a server at runtime?
 
@@ -135,8 +137,9 @@ export function seedTranslations(translations, locale) {
     //     request in the PREVIOUS request's language, under this request's
     //     <html lang>, canonical and hreflang.
     //  2. `$t()`'s optional chain is on the SECOND hop — cats[cat]?.[phrase] —
-    //     so a null/undefined catalog throws on the first lookup rather than
-    //     falling back. `load` must return {} on a failed fetch, never null.
+    //     so a null/undefined catalog in the store throws on the first lookup
+    //     instead of falling back. `load` returns null on a failed fetch; this
+    //     branch turns that into an empty catalog so the store never holds null.
     if (!translations || !locale) {
         sTranslations.set(structuredClone(EMPTY));
         currentlyLoadedLocale.set(locale ?? '');
@@ -150,7 +153,7 @@ export function seedTranslations(translations, locale) {
     for (const [category, phrases] of Object.entries(translations)) {
         catalog[category] = { ...phrases, __category__: category };
     }
-    catalog.__uncategorized__ ??= EMPTY.__uncategorized__;
+    catalog.__uncategorized__ ??= structuredClone(EMPTY.__uncategorized__);
 
     sTranslations.set(catalog);
     currentlyLoadedLocale.set(locale);
@@ -173,7 +176,7 @@ export function seedTranslations(translations, locale) {
     // Component BODY. Runs during SSR before any child renders, so t() resolves for
     // the whole tree; runs before hydration on the client. No `await` may precede it —
     // the render being synchronous is what stops another request interleaving.
-    untrack(() => seedTranslations(data.translations, data.locale));
+    untrack(() => seedTranslations(data.initialTranslations, data.locale));
 </script>
 ```
 
@@ -199,8 +202,8 @@ first paint depends on.
 Verified under load: 8 locales × 10 rounds, all in flight simultaneously against an
 `adapter-node` production build — 80 responses, zero cross-request bleed.
 
-> **The condition is structurally guaranteed here — and there is exactly one way to break
-> it.** Measured 2026-08-30 against published `langsys-js-svelte@3.6.10`, production
+> **In the default renderer the condition is structurally guaranteed, and there are two ways
+> to break it:** seeding in a hook (below) and `experimental.async` (further below). Measured 2026-08-30 against published `langsys-js-svelte@3.6.10`, production
 > `adapter-node` build, 8 locales × 10 rounds in flight, with a positive control proving the
 > harness detects bleeds on Svelte (70/80 when deliberately broken).
 >
@@ -208,7 +211,7 @@ Verified under load: 8 locales × 10 rounds, all in flight simultaneously agains
 > |---|---|
 > | Seed in `+layout.svelte` body, synchronous page | **0 / 80** (0/400 stressed, 0/70 with base locale excluded) |
 > | `{#await}` between seed and read | **0 bleeds** — but see below |
-> | Svelte 5 `experimental.async`, `await` in a parent, read in a child | **0 bleeds** — true, and narrower than it looks; see below |
+> | Svelte 5 `experimental.async`, `await` in a parent, read in a child (separate 4-locale run) | **0 / 4**, which holds only for that shape; see below |
 > | **Seed in `hooks.server.js`, `await resolve()` before render** | **70 / 80** |
 >
 > **Why Svelte is safe where React and Vue are not:** in the **default renderer**,
@@ -315,7 +318,7 @@ same SEO conclusion this track already reaches, now with a second mechanism behi
 </script>
 ```
 
-> **`init()` belongs in `onMount` — but not for the reason you may assume.** It is not `document is not defined`. Calling `init()` during SSR *works*, and then corrupts concurrent requests: `LangsysApp` is a module singleton whose catalog lives in module globals, so one request's locale overwrites another's mid-render. **A `typeof window` guard does not make server-side init safe.** There is no request-scoped translator; see [core/rendering-mode.md](../core/rendering-mode.md).
+> **`init()` belongs in `onMount` — but not for the reason you may assume.** It is not `document is not defined`. Calling `init()` during SSR *works*, and then corrupts concurrent requests: `LangsysApp` is a module singleton whose catalog lives in module globals, so one request's locale overwrites another's mid-render. **A `typeof window` guard does not make server-side init safe.** The SDK has no request-scoped translator of its own. On the server, use the body seed in §2, or [`langsys-js-server`](../core/server-sdk.md) for real request scoping.
 
 Three behaviors of the seeding path worth knowing, all verified against `langsys-js-typescript@0.6.5`:
 
@@ -366,7 +369,7 @@ not.
 
 ## 4. Crawler-visible text
 
-`$t` is inert during SSR, so anything a crawler must read comes from the catalog directly:
+With §2 in place `$t` resolves during SSR. For head tags, still read from the catalog directly. A wrong `<title>` or OG tag reaches crawlers and social unfurlers with no chance of client correction, so it deserves a second path that doesn't depend on the store:
 
 ```svelte
 <script lang="ts">
@@ -431,7 +434,7 @@ Collapse region-only twins; **keep script subtags distinct** — `zh-hant` and `
 
     async function change(next: string) {
         userLocale.set(next);
-        await LangsysApp.translationsLoadingPromise;
+        await LangsysApp.translationsLoadingPromise;   // settles on failure too
         document.documentElement.lang = next;
     }
 </script>
@@ -463,7 +466,7 @@ Same shape: resolve locale, fetch the catalog before rendering, resolve crawler-
 
 | Symptom | Cause |
 |---|---|
-| Body copy is base language in `curl` output | **Expected.** `$t` is inert during SSR — verify in a browser |
+| `$t()` body copy is base language in `curl` output | Seed missing, misplaced (a hook, not the layout body), or reading the wrong `data` field. `ssr-i18n-check` in [verify.md](../verify.md) fails on this. `<Phrase>`/`<Translate>` copy staying base language is **expected** |
 | Head/meta is base language | Using `$t` in `<svelte:head>`; use the pure catalog lookup |
 | Server HTML shows a literal `{name}` or raw ICU | `ct` was shortened to a raw lookup — it must call `interpolate` |
 | A phrase renders but never appears in the Translation Manager | It renders only server-side; `ct` does not harvest missing tokens |
@@ -486,9 +489,12 @@ Same shape: resolve locale, fetch the catalog before rendering, resolve crawler-
 - [ ] `+layout.ts` carries flags only, not the catalog
 - [ ] Both `initialTranslations` and `initialTranslationsLocale` passed
 - [ ] `init()` inside `onMount`, never during SSR
-- [ ] Ready gate seeded from the server, with an escape hatch
-- [ ] Crawler-visible strings resolved from the catalog, not `$t`
+- [ ] Catalog seeded in the root layout's **component body**, never a `hooks.server.js` hook
+- [ ] Seed's failure path **resets** the store; it never returns early
+- [ ] `compilerOptions.experimental.async` is off
+- [ ] No render gate that replaces the page; failure states overlay it
+- [ ] Head tags resolved from the catalog directly
 - [ ] `hreflang` list deduplicated by URL token
-- [ ] Verified **in a browser**, not with `curl`
+- [ ] `ssr-i18n-check` passes for a non-base locale, tested from a warm process as well as a cold one
 - [ ] One catalog request in the network tab
 - [ ] Read-only key in production

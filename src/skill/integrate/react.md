@@ -152,11 +152,11 @@ function LocaleSwitcher() {
 }
 ```
 
-Re-run dependent code after the new catalog lands:
+Re-run dependent code once the locale change is no longer in flight. This settles on failure too, so it doesn't prove a catalog arrived; see [core/init-config.md](../core/init-config.md):
 
 ```tsx
 useEffect(() => {
-    LangsysApp.translationsLoadingPromise.then(() => { /* … */ });
+    LangsysApp.translationsLoadingPromise.then(() => { /* change settled, success or not */ });
 }, [locale]);
 ```
 
