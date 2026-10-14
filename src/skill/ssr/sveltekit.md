@@ -113,7 +113,179 @@ export const ssr = true;
 export const prerender = false;
 ```
 
-## 2. Client: seed on hydration
+## 2. Seed the store — in the component body, on both server and client
+
+**This is the step that makes `t()` server-render.** `init()` alone cannot do it: it runs
+in `onMount`, which never executes on the server and, on the client, lands *after*
+hydration — so the browser hydrates base-locale text over whatever the server emitted.
+
+```ts
+// src/lib/langsys-seed.ts
+import { sTranslations, currentlyLoadedLocale, LangsysApp } from 'langsys-js-svelte';
+import { browser } from '$app/environment';
+
+const EMPTY = {
+    __uncategorized__: { __category__: '__uncategorized__', __symbol__: '__uncategorized__' },
+};
+
+export function seedTranslations(translations, locale) {
+    // RESET on the miss path — never return early, and never store a nullish
+    // catalog. Two reasons, both load-bearing:
+    //  1. The store is a per-process singleton. Leaving it as-is renders THIS
+    //     request in the PREVIOUS request's language, under this request's
+    //     <html lang>, canonical and hreflang.
+    //  2. `$t()`'s optional chain is on the SECOND hop — cats[cat]?.[phrase] —
+    //     so a null/undefined catalog throws on the first lookup rather than
+    //     falling back. `load` must return {} on a failed fetch, never null.
+    if (!translations || !locale) {
+        sTranslations.set(structuredClone(EMPTY));
+        currentlyLoadedLocale.set(locale ?? '');
+        console.error('[langsys] catalog missing; reset to base locale', { locale });
+        return false;
+    }
+
+    // COPY before stamping markers. The loader's object is a shared cache entry and
+    // is serialized into the client payload; mutating it in place edits both.
+    const catalog = {};
+    for (const [category, phrases] of Object.entries(translations)) {
+        catalog[category] = { ...phrases, __category__: category };
+    }
+    catalog.__uncategorized__ ??= EMPTY.__uncategorized__;
+
+    sTranslations.set(catalog);
+    currentlyLoadedLocale.set(locale);
+
+    // Browser-only bookkeeping. It suppresses a redundant client refetch; writing it
+    // server-side mutates shared state for no benefit.
+    if (browser) LangsysApp.Translations?.markLoaded?.(locale);
+    return true;
+}
+```
+
+```svelte
+<!-- +layout.svelte — the call site is the rule, not a preference -->
+<script lang="ts">
+    import { untrack } from 'svelte';
+    import { seedTranslations } from '$lib/langsys-seed';
+
+    let { data, children } = $props();
+
+    // Component BODY. Runs during SSR before any child renders, so t() resolves for
+    // the whole tree; runs before hydration on the client. No `await` may precede it —
+    // the render being synchronous is what stops another request interleaving.
+    untrack(() => seedTranslations(data.translations, data.locale));
+</script>
+```
+
+`untrack()` is there so Svelte 5 does not warn about reading `$props()` outside a closure;
+reading the initial value is the intent.
+
+> **The same placement closes a second, unrelated hazard.** `sTranslations` persists to
+> localStorage and rehydrates at module load, *before* `init()` — and the persisted catalog
+> carries no locale tag, so nothing can tell it is stale. Without a body seed, a correctly
+> server-rendered `Hola` under `<html lang="es-ES">` is repainted as `Ciao` at hydration,
+> destroying the SSR output this whole track exists to produce. With the body seed it is
+> `Hola es-ES` and there is no flash at all, because the seed runs during the hydration
+> render pass before any child reads. `init({ initialTranslations })` in `onMount` does not
+> help — it runs after hydration, when the stale paint has already happened.
+>
+> One rule, two hazards: seed in the component body, and both the concurrency window and the
+> stale-locale repaint close together.
+
+**`init()` still runs**, unchanged, in `onMount` below. It owns key validation, the user
+locale store and every subsequent locale change. The seed only front-runs the part the
+first paint depends on.
+
+Verified under load: 8 locales × 10 rounds, all in flight simultaneously against an
+`adapter-node` production build — 80 responses, zero cross-request bleed.
+
+> **The condition is structurally guaranteed here — and there is exactly one way to break
+> it.** Measured 2026-08-30 against published `langsys-js-svelte@3.6.10`, production
+> `adapter-node` build, 8 locales × 10 rounds in flight, with a positive control proving the
+> harness detects bleeds on Svelte (70/80 when deliberately broken).
+>
+> | Configuration | Wrong-language responses |
+> |---|---|
+> | Seed in `+layout.svelte` body, synchronous page | **0 / 80** (0/400 stressed, 0/70 with base locale excluded) |
+> | `{#await}` between seed and read | **0 bleeds** — but see below |
+> | Svelte 5 `experimental.async`, `await` in a parent, read in a child | **0 bleeds** — true, and narrower than it looks; see below |
+> | **Seed in `hooks.server.js`, `await resolve()` before render** | **70 / 80** |
+>
+> **Why Svelte is safe where React and Vue are not:** in the **default renderer**,
+> `render()` from `svelte/server` returns a `RenderOutput` that is fully populated
+> synchronously before control returns to the event loop. **No component-tree construction
+> can put a suspension between the seed and a read** — `{#await}` renders its *pending*
+> branch and never resolves server-side. So the condition is a property of the renderer, not
+> of your codebase, and it survives refactors.
+>
+> ### ⚠ `compilerOptions.experimental.async` — the guarantee holds only in the default renderer
+>
+> Measured against Svelte 5.55.8, four locales rendering concurrently, module-global seed in
+> a parent body. Flag verified genuinely on two ways: the compiled output opens with
+> `import 'svelte/internal/flags/async'`, and the same source fails to compile without it.
+>
+> | Shape | flag | Wrong-locale |
+> |---|---|---|
+> | No `await` in the tree | off | 0 / 4 |
+> | No `await` in the tree | on | 0 / 4 |
+> | `await` in a **parent's** script, read in a **child** | on | 0 / 4 |
+> | **`await` then read in the *same* script** | on | **3 / 4** |
+>
+> **The flag alone is not the trigger. The read landing after the await in the same closure
+> is.** With an await in a parent, the compiler hoists it into `$$renderer.run([...])` and
+> keeps walking children synchronously — so that row is genuinely safe. Put the read after
+> the await in one script and it compiles into a gated continuation instead:
+>
+> ```js
+> var $$promises = $$renderer.run([
+>     () => deferred,
+>     () => { word = sTranslations.get()?.Greeting?.Hello; }   // deferred — reads after the gap
+> ]);
+> ```
+>
+> **Row 4 is the way almost anyone would write it** — `const data = await something;` and
+> then read. A layout that seeds in its body plus a page that awaits before reading *is*
+> row 4. So with this flag on, SvelteKit stops being structurally safe and joins Nuxt's
+> category: a safe shape exists, and the idiomatic one violates it.
+>
+> **Do not enable `experimental.async` with a module-global seed.** If you need it, use
+> request scoping. And note the failures converge on whichever request seeded last rather
+> than scattering, so sampling a few responses reads as a config error.
+
+
+### ⛔ Seed in the component body — never in `hooks.server.js`
+
+The one shape that breaks it looks completely idiomatic. A `handle` hook is exactly where a
+SvelteKit developer puts per-request setup:
+
+```js
+// ❌ hooks.server.js — 70/80 responses in the wrong language
+export async function handle({ event, resolve }) {
+    seedTranslations(await getCatalog(event), event.locals.locale);
+    return await resolve(event);   // ← await between the seed and every read
+}
+```
+
+Anything that seeds server-side and then awaits before rendering has the window. The
+component body is the only position with no await between it and the tree it feeds.
+
+> **If you reproduce this, remove the layout seed first.** The first measurement of this
+> scenario came back 0/80 and nearly reported hooks as safe — the test routes still inherited
+> the root `+layout.svelte`, which re-seeded synchronously just before the render and masked
+> the hook entirely. The tell was that all 8 seeds completed before any render, yet every
+> render read its own locale, which is impossible with a shared singleton. **Leave a
+> component-body seed in place and you will measure the safe path while believing you
+> measured the dangerous one.**
+
+### `{#await}` does not bleed, but it renders nothing
+
+Zero contamination — because the `t()` read never happens on the server at all. Every such
+response body is the pending branch. So `{#await}` and streamed `load` promises are safe
+*and* invisible: **any copy that must reach a crawler cannot sit behind one.** That is the
+same SEO conclusion this track already reaches, now with a second mechanism behind it.
+
+
+## 2b. Client: `init()` on hydration
 
 ```svelte
 <!-- src/routes/[[lang=lang]]/+layout.svelte -->
@@ -151,30 +323,46 @@ Three behaviors of the seeding path worth knowing, all verified against `langsys
 - **`init()` mutates the object you pass it**, writing a `__category__` key into every category and adding `__uncategorized__` if absent. That object is your SvelteKit `data`. Do not hand it something frozen or shared.
 - **The seeded no-refetch window is 60 seconds, not permanent.** A long-lived session that re-settles on the same locale later *will* fetch again. Correct behavior, surprising in a network tab.
 
-## 3. The ready gate: a failure path, not a loading state
+## 3. Never gate rendering on translation readiness
 
-Gate, but seed the gate from the server so it never fires on the happy path:
+**Nothing in the tree may be replaced by a loading or error state.** A "still loading
+translations" spinner or a full-screen init error is *server-rendered* on any slow or
+failed fetch — so the crawler indexes the spinner **as the page**, and visitors get an
+overlay instead of the site. One flaky fetch becomes total content loss on every route at
+once.
+
+The trade never pays. A translation failure means text falls back to the base locale, and
+in a phrase-keyed SDK **the phrase IS the base-locale copy**. That is a degraded page, not
+a broken one. Gating converts a partial-translation problem into a no-content problem.
 
 ```svelte
-<script lang="ts">
-    import { untrack } from 'svelte';
-    let isLangsysReady = $state(untrack(() => data.langsysReady || false));
-</script>
-
-{#if !isLangsysReady}
-    <div class="overlay">
-        <p>Initializing language system…</p>
-        <!-- Name your base locale here, not 'English' — baseLocale is config. -->
-        <button onclick={() => (isLangsysReady = true)}>Continue in {BASE_LOCALE_NAME}</button>
-    </div>
+<!-- ❌ failure replaces the document -->
+{#if error}
+    <FullScreenError />
+{:else if !ready}
+    <Spinner />              <!-- ← this gets indexed AS the page -->
 {:else}
-    {@render children()}
+    <Site />
 {/if}
 ```
 
-> **Do not gate on hydration when seeding** — but not because the server markup is translated. It is not. Gate on hydration and you replace *readable base-language text* with a spinner, and hand crawlers an empty page instead of English. Strictly worse.
+```svelte
+<!-- ✅ the site always paints; state is layered OVER it -->
+{@render children()}
 
-**Always give the gate an escape hatch.** A translation outage must never be a site outage.
+{#if dev && error}
+    <DevBanner />            <!-- compiled out of production -->
+{/if}
+```
+
+**If you move a failure banner behind `dev`, add a `console.error` on that branch.**
+Otherwise the one signal meaning "the SDK is genuinely misconfigured" becomes write-only in
+production. Hiding the banner from visitors is right; hiding the signal from the team is
+not.
+
+> **Changed 2026-08-30.** This section previously recommended a gate seeded from the server
+> so it "never fires on the happy path". That is still a replacing gate, and it fires on
+> exactly the unhappy path a crawler is most likely to hit. Overlay, never replace.
 
 ## 4. Crawler-visible text
 

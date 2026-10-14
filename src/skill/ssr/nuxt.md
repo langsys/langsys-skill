@@ -1,5 +1,48 @@
 # SSR — Nuxt
 
+
+> ### ⛔ Do NOT seed the catalog store during SSR here — measured unsafe
+>
+> [core/rendering-mode.md](../core/rendering-mode.md) describes seeding `sTranslations` +
+> `currentlyLoadedLocale` during the render so `t()` server-renders. **That is permitted on
+> SvelteKit and prohibited here.** `langsys-js-vue` does re-export both settable signals, so the
+> code will look like it works — and it does, until two requests overlap.
+>
+> **Measured 2026-08-30** against published `langsys-js-vue@0.2.1`. Bare Vue SSR first,
+> then a real Nuxt 3 app (`nuxt build`, `node .output/server/index.mjs`, seed in a Nitro
+> `request` hook). Concurrency was instrumented server-side — max 47 and 80 requests
+> genuinely in flight — so the zeros are real negatives, not a serialised harness.
+>
+> | Read position | `await` between seed and read? | Wrong-language responses |
+> |---|---|---|
+> | Bare Vue, synchronous `setup()` | no | 0 / 80, and 0 / 400 |
+> | `app.vue` setup, before any await | no | **0 / 80** |
+> | Page inside `<NuxtPage>`'s Suspense, **synchronous** page | no | **0 / 80** |
+> | `app.vue` setup, after `await useAsyncData` | yes | **67 / 80** |
+> | Page inside Suspense, after `useAsyncData` | yes | **71 / 80** |
+>
+> **`<Suspense>` by itself is not the problem, and neither is Nuxt's structure.** A Suspense
+> boundary wrapping a *synchronous* child is clean at 80 concurrent. The rule here is the
+> same one-liner as every other framework: **any await point between the seed and a `t()`
+> read**. `renderToString` is async but runs synchronously until its first `await`, and a
+> fully synchronous tree completes inside that prefix.
+>
+> **So this is "unsafe in practice", not "structurally forbidden".** A safe position exists —
+> reads in `app.vue` setup above any await, even with Suspense-wrapped routes below. It is
+> one line from collapsing: adding `await useAsyncData`, which is *the* idiomatic way a Nuxt
+> app fetches, took that exact position from 0/80 to 67/80. And every routed page that awaits
+> anything is unsafe regardless, which is most real pages.
+>
+> **Recommend request scoping** — [`langsys-js-server`](../core/server-sdk.md), or the pure
+> catalog function (§ below), which holds no module state and is immune by construction.
+> Not because Nuxt forbids the seed, but because a Nuxt app that never awaits above its
+> translated reads is not a Nuxt app anyone writes.
+
+> **Hazard 2 applies here regardless of renderer.** See "the failure path must reset" in
+> [core/rendering-mode.md](../core/rendering-mode.md); it bit under the *synchronous*
+> renderer too, so passing the concurrency test above buys no protection from it.
+
+
 Read [integrate/vue.md](../integrate/vue.md) first. This adds the server half.
 
 > **Decide the rendering mode first: [core/rendering-mode.md](../core/rendering-mode.md).**

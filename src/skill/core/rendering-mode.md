@@ -4,26 +4,208 @@
 
 ## The fact that governs everything below
 
-**In React, Vue and Svelte, the reactive primitives — `t()`, `$t()`, `<Phrase>`, `<Translate>` — render the base language during server rendering. Always.**
+**`t()` server-renders correctly once the catalog is seeded. `<Phrase>` and `<Translate>`
+never do, and no seeding changes that.** The split is not about configuration; the two
+groups work by different mechanisms.
 
-Not sometimes, not when misconfigured. The catalog lives in module-global signals that only `LangsysApp.init()` writes, `init()` runs in a client-only lifecycle hook (`useEffect` / `onMounted` / `onMount`), and those hooks do not run on the server. So the server emits your base-language text and the client swaps it after hydration.
+| Construct | Mechanism | Server-renders? |
+|---|---|---|
+| `t()` / `$t()` | function call, reads the catalog store | **Yes** — once seeded |
+| `<Phrase>` | effect mounts a rich-text handler onto the DOM | **No** |
+| `<Translate>` | effect mounts a DOM walker that rewrites text | **No** |
 
-`init()` cannot simply be moved to the server to fix this. `LangsysApp` is a hard module singleton and the catalog lives in module globals, so under a long-lived Node server one process serves every concurrent request: seeding those globals server-side is a **cross-request data race** — an in-flight `/de` render can observe `/it`'s catalog. Constructing your own `Translations` does not escape it either; its constructor subscribes to the same globals. **There is no request-scoped translator in the SDK.** (Verified against `langsys-js-typescript@0.6.5`; see [VERIFIED.md](../../VERIFIED.md).)
+`<Phrase>` and `<Translate>` translate by mounting onto an element that has already
+rendered and rewriting its text. **Effects do not run during SSR.** The mechanism requires
+a DOM that does not exist yet, so these emit base-locale children on the server no matter
+what you seed. This is a structural limit, not a bug, and it is scheduled for a server
+path in `0.2.0`.
 
-**PHP is the exception**, and the reason is structural: `translatePage($html)` post-processes finished HTML on the server, so PHP genuinely emits fully translated body copy. Everything in this document about base-language server output applies to the **JS frameworks only**.
+`t()` is different, and this is the part the skill previously got wrong. The catalog lives
+in a module-global signal — but that signal is **publicly settable**, and setting it
+during the render makes `t()` resolve for the whole tree:
 
+```ts
+import { sTranslations, currentlyLoadedLocale } from 'langsys-js-svelte';
+sTranslations.set(catalog);          // Signal<iCategories>.set()
+currentlyLoadedLocale.set(locale);   // Signal<string>.set()
+```
+
+The SDK documents this path itself, in the JSDoc for `Translations.markLoaded`:
+
+> *"Record that a locale's catalog is already present without fetching — e.g. after an SSR
+> handoff seeds `sTranslations` + `currentlyLoadedLocale`."*
+
+Verified against `langsys-js-typescript@0.6.5`: `Signal<T>` exposes `set()`, `get()` and
+`update()`, and `sTranslations` / `currentlyLoadedLocale` are re-exported by all three
+framework SDKs.
+
+> **Correction, 2026-08-30.** This document previously stated that all four primitives
+> render base language during SSR "always", and that seeding the globals server-side was a
+> cross-request data race with no safe path. The first half was false for `t()`. The store
+> genuinely is shared mutable state — but the render is synchronous, which closes the
+> window, and the conditions for keeping it closed are stateable (see below). The error was
+> found in production: seven sites served **byte-identical** HTML on every localized route,
+> and Google folded them into one cluster. See [VERIFIED.md](../../VERIFIED.md).
+
+### The four conditions that keep seeding safe
+
+The store is a per-process singleton shared across every request. It is safe to seed only
+under all four of these. Breaking any one is a live defect, not a style problem.
+
+1. **Seed synchronously from the component body** of the root shell — never from
+   `onMount` / `useEffect` / `mounted`. Those never run on the server at all, and on the
+   client they land *after* hydration, so the browser hydrates base-locale text over
+   localized markup.
+2. **The seed and every `t()` read must occur in one uninterrupted synchronous execution.**
+   Nothing may suspend in between. This is a constraint on the whole subtree, not on the
+   line you write — if another request can interleave between the seed and the read, the
+   shared singleton hands it the wrong catalog. Measured: **70 of 80** concurrent React
+   responses and **65–72 of 80** Vue responses came back in the wrong language with a
+   suspension in that position; move it out and the same renderer is clean 80/80.
+
+   **What differs between frameworks is how you can violate it, not the rule itself:**
+
+   | Framework | How the rule gets broken | Can a caller avoid it? |
+   |---|---|---|
+   | **Svelte** | Seeding **outside** the render pass — a `handle` hook that then `await`s `resolve()`, measured **70/80**. Or `compilerOptions.experimental.async` **plus a read after an await in the same script** — measured **3/4**, and that is the shape most people write. | **Yes, in the default renderer.** `render()` returns a `RenderOutput` that is fully populated synchronously, so no component-tree construction — `{#await}` included — can put a suspension between seed and read |
+   | **React / Vue** | Any suspension inside the tree between seed and read | Only by inspecting the whole subtree, with nothing reporting a violation |
+   | **Next App Router** | Not this rule at all — separate module graphs | **No.** Non-functional; see below |
+
+   > **This is why Svelte is permitted and the others are not.** Not because Svelte is
+   > better written, but because its renderer cannot yield, so the condition is a structural
+   > guarantee rather than a property you have to keep re-verifying after every refactor.
+3. **The failure path must RESET, never return early.** This is the subtle one. An early
+   return on a failed catalog fetch reads as a harmless no-op; it is not, because the
+   singleton still holds *the previous request's* catalog. Serve `/it`, then have `/es`
+   time out, and the Spanish page renders in Italian under `<html lang="es">` with Spanish
+   canonical and `hreflang` — confidently mislabelled content, which is worse than
+   untranslated. **When a store is process-global, not writing is a decision, not an
+   abstention.**
+4. **Keep write-side bookkeeping browser-only** — cache timestamps, "already loaded" marks.
+   It exists to suppress a redundant client refetch; writing it server-side mutates shared
+   state for no benefit.
+
+Also **copy the catalog before normalizing it.** The loader's object is usually a shared
+cache entry *and* is serialized into the client payload; stamping category markers onto it
+in place edits the server's cache for every later request.
+
+### Framework scope — measured, 2026-08-30
+
+Published tarballs, production builds, 8 locales × 10 rounds all in flight:
+
+| Framework | Configuration | Wrong-language responses |
+|---|---|---|
+| Svelte | seed in `+layout.svelte` body, synchronous tree | **0 / 80** (0/400 stressed) |
+| Svelte | `{#await}` between seed and read | **0 bleeds** — but renders nothing; see below |
+| Svelte | seed in `hooks.server.js`, `await resolve()` before render | **70 / 80** |
+| React | `renderToString` | **0 / 80** |
+| React | `renderToPipeableStream`, synchronous tree | **0 / 80** |
+| React | streaming, suspension **between** seed and read | **70 / 80** |
+| React | streaming, seed moved **inside** the suspended subtree | **0 / 80** |
+| React | **App Router / RSC**, concurrency **1** | **100% of non-base locales** |
+| Vue | synchronous `setup()` | **0 / 80** (and 0 / 400) |
+| Vue | `async setup()` between seed and read | **65–72 / 80** |
+| Vue | `<Suspense>` around an **async** child | **68 / 80** |
+| Nuxt 3 | `app.vue` setup, before any await | **0 / 80** |
+| Nuxt 3 | page inside `<NuxtPage>` Suspense, **synchronous** page | **0 / 80** |
+| Nuxt 3 | `app.vue` setup, after `await useAsyncData` | **67 / 80** |
+| Nuxt 3 | page inside Suspense, after `useAsyncData` | **71 / 80** |
+
+**The renderer is not the variable — the await point is.** Streaming is safe when the seed
+and the reads share a synchronous block; a synchronous renderer is unsafe when they do not.
+
+**App Router is a different failure and deserves different words.** It is not a race: the
+Server Component and the Client Component hold *separate module instances* of the binding,
+so the seed lands in a graph the reader is not in. Every non-base locale renders base
+content with one request in flight. Calling that "unsafe under concurrency" understates it
+and wrongly implies low traffic makes it fine. **Non-functional by construction.**
+
+**A Suspense boundary is not itself the hazard.** Wrapping a *synchronous* child is clean
+at 80 concurrent; the Nuxt rows prove it. What breaks the pattern is an await between the
+seed and the read, wherever it sits and whatever put it there. **There is one rule, and it
+is the same in all three frameworks** — the frameworks differ only in how likely you are to
+violate it, and in whether you can guarantee you have not.
+
+- **SvelteKit** — permitted, and in the **default renderer** the condition is structurally
+  guaranteed rather than merely satisfiable. Two ways to lose it, both in
+  [ssr/sveltekit.md](../ssr/sveltekit.md): seeding outside the render pass (`hooks.server.js`),
+  and turning on `compilerOptions.experimental.async`.
+- **Nuxt** — a safe position exists (`app.vue` setup above any await) but it collapses the
+  moment anyone writes `await useAsyncData`, which is how Nuxt apps fetch. Unsafe *in
+  practice*, not structurally forbidden. Recommend request scoping.
+- **Next Pages Router / `renderToString`** — same shape as Nuxt: satisfiable, easily broken.
+- **Next App Router** — a different failure entirely; see below.
+
+Those needing request scoping want `langsys-js-server`, `AsyncLocalStorage`, or the pure
+catalog function — not a relocated seed. See [ssr/nextjs.md](../ssr/nextjs.md) and
+[ssr/nuxt.md](../ssr/nuxt.md).
+
+> **Svelte's row is being re-measured.** The 0/80 above came from one production platform
+> whose tree happened to have no suspension between seed and read. `{#await}` blocks are
+> ordinary SvelteKit, so the framework may permit the violating shape even though this app
+> did not exhibit it. Until that returns, treat condition 2 as the operative rule rather
+> than trusting the framework name.
+
+> **It converges — it does not scatter.** Every suspended request resumes after the others
+> have seeded, so they all read the *same* last writer. The result is a near-uniform wrong
+> language, not sporadic corruption: 70 of 80 wrong, from a single source. An operator
+> sampling a few responses sees one consistent wrong language, which reads as a **config
+> error rather than a race** — so the instinct is to check env vars, find nothing, and move
+> on. Budget for that when diagnosing.
+
+> **StrictMode was tested and is a non-issue.** 80 component-body invocations for 80
+> requests; no server-side double-render in production. Recorded so it is not re-litigated.
+
+**PHP is the exception to all of the above**, and the reason is structural:
+`translatePage($html)` post-processes finished HTML on the server, so PHP genuinely emits
+fully translated body copy with none of these conditions to manage.
 ## What that means for crawlers
 
-| | Body copy from `t()`/`<Phrase>`/`<Translate>` | Strings you resolve from the fetched catalog | Realtime for humans |
+| | `t()` body copy | `<Phrase>` / `<Translate>` body copy | Realtime for humans |
 |---|---|---|---|
-| **SSR (JS)** | base language | **translated, current per request** | yes |
-| **Prerendered (JS)** | base language | translated, build-time snapshot | yes, after hydration |
-| **Client-only (JS)** | no HTML at all | n/a | yes |
-| **PHP SSR** | **translated, current** | n/a | yes |
+| **SSR (JS), seeded** | **translated, current per request** | base language | yes |
+| **SSR (JS), not seeded** | base language | base language | yes |
+| **Prerendered (JS)** | translated, build-time snapshot | base language | yes, after hydration |
+| **Client-only (JS)** | no HTML at all | no HTML at all | yes |
+| **PHP SSR** | **translated, current** | **translated, current** | yes |
 
-The second column is the one that matters, and it is the part most people miss. **The catalog is already on your server** — fetching it is what seeding requires. Nothing stops you from resolving a string against it directly during the render. That is a pure lookup, so it has none of the singleton's problems.
+**Row two is the failure this document exists to prevent.** An unseeded SSR app is not
+subtly degraded — it serves every localized route with a byte-identical base-locale body.
+Google reads those as duplicates of one another, folds them into a single cluster, and
+keeps one arbitrary representative. More locales means more identical copies competing, so
+the damage scales with exactly the thing you were trying to grow.
+
+The second column is the residue you cannot seed away. Measured on a production platform
+after seeding landed: **4–24% of prose per page** remained base-locale, all of it inside
+`<Phrase>` and `<Translate>`. Treat that as the honest ceiling of an SSR-first integration
+today, and state it up front rather than letting someone discover it in a search result.
+
+**Do not wrap plain text in `<Translate>`.** On that same platform, 21 of 60 `<Translate>`
+blocks held no markup at all — invisible to crawlers for no benefit, and each one movable
+to `t()` for free, since the catalog key is the same and existing translations carry over.
+Reach for the markup-bearing components only when a run genuinely contains inline markup.
 
 ### Resolve crawler-visible text through a pure catalog function
+
+> **Rank depends on the framework, as of 2026-08-30.** On **SvelteKit**, prefer **seeding
+> the store** (above): free, no dependency, every existing `t()` call site server-renders
+> with no rewrite. On **React App Router and Nuxt, this helper ranks FIRST** — seeding is
+> prohibited there, and a pure function is immune to both failure modes by construction: it
+> holds no module state, so there is no singleton to leak across requests and none to land
+> in the wrong module graph. Prefer **[`langsys-js-server`](./server-sdk.md)** over this helper if you want
+> request scoping as a structural property rather than as four conditions you must not
+> violate, plus harvesting for server-only phrases.
+>
+> The honest trade between the first two: **seeding is free but fragile** — the four
+> conditions above are invariants you own — while the **server SDK costs a dependency and
+> buys structural safety**. Neither extends coverage to `<Phrase>` / `<Translate>`; nothing
+> does before `0.2.0`.
+>
+> Keep reading only if you want head-tag resolution that does not depend on the reactive
+> store at all. **That remains genuinely worth doing even after seeding** — `<title>`, meta
+> and OG copy are the one place a wrong string reaches crawlers and social unfurlers with no
+> chance of client-side correction, and a direct catalog read is a second independent path
+> to a correct head for about one line. See R4 in the SSR tracks.
 
 > **Superseded by `langsys-js-server`.** The hand-rolled helper below covers plain strings only —
 > no `<Phrase>`, no `<Translate>` — so indexed copy containing an `<em>` or an inflected count is
@@ -107,7 +289,49 @@ Still the right question, still a product question — but answer it knowing wha
 
 **Prerendering is not the trap I once described**, because it does not lose translated body copy: SSR never had it either. What it loses is freshness in the first column above — a phrase fixed today stays wrong in indexed head and SEO copy until the next build. If static is a hard constraint, prerender per locale and schedule rebuilds against translation updates.
 
-**Client-only remains genuinely fine for an app.** No crawler, no seeding, no hydration reconciliation — one `init()`, one ready gate, done. The gate is what prevents the flash: render the loader, not the base language, until `init()` resolves.
+**Client-only remains genuinely fine for an app.** No crawler, no seeding, no hydration reconciliation — one `init()`, one ready gate, done.
+
+> **The pre-`init()` flash is not base language — it is the locale the user previously
+> viewed.** `sTranslations` is `persist('translations', …)`, i.e. localStorage, so the store
+> rehydrates from whatever locale that browser last loaded. Measured 2026-08-30 by sampling
+> the DOM every 60ms: with a prior `fr-FR` visit, loading `/de-DE` renders **"Bonjour" for
+> 180–240ms** before flipping to "Hallo". On a locale switcher — the single most likely
+> navigation — the user watches the language they just left.
+>
+> Two consequences. **This is the strongest argument for the ready gate in an app**, because
+> the thing it hides is wrong content rather than merely untranslated content. And it is a
+> reason not to sell `init({ initialTranslations })` as removing the flash: the seed sits
+> behind `await LangsysAppAPI.validate()` (measured 405–490ms; treat the number as
+> environment-specific, the structure as the point), so data already in hand still waits on a
+> network round-trip.
+>
+> **Root cause, confirmed at source.** `sTranslations` is `persist('translations', …)` and
+> reads localStorage at *module load*, before any `init()`. `currentlyLoadedLocale` is a
+> plain signal and is **not** persisted. So the stored catalog carries **no locale tag** —
+> nothing downstream can tell that it is stale, or which locale it belongs to. That asymmetry
+> is the whole defect.
+>
+> **On a seeded SSR page it is worse than a flash: it destroys correct server output.**
+> Measured on SvelteKit — server HTML correctly reads `Hola` under `<html lang="es-ES">`,
+> then localStorage wins at module load and hydration repaints `Ciao`, the previously viewed
+> locale, until `init()` lands. A crawler that executes JavaScript sees the stale language.
+> Server-rendering the right language and then replacing it is worse than never having
+> server-rendered it, for exactly the audience the seeding was for.
+>
+> **The component-body seed closes it** — one placement, two hazards. Because the seed runs
+> during the hydration render pass, before any child reads, it overwrites the stale persisted
+> catalog before anything can render from it. Measured: without a body seed, hydration paints
+> `Ciao`; with it, `Hola es-ES` and **no flash at all**.
+>
+> **`init({ initialTranslations })` in `onMount` / `useEffect` does NOT fix this**, because
+> those run *after* hydration — the stale paint has already happened.
+>
+> **Not framework-specific** — it is `persist()` plus init sitting behind an await. Note that
+> the client has **no cross-request concurrency hazard** (one browser, one user), so the
+> server-side prohibition on seeding does not automatically forbid a client-side body seed in
+> React or Vue. Whether that closes the flash there is **untested** — do not assume it does.
+
+The gate is what prevents that flash: render the loader, not the stale locale, until `init()` resolves. **On a public, crawler-visible route the gate is prohibited instead** — a server-rendered spinner gets indexed as the page. See the SSR tracks.
 
 ## The in-between cases
 

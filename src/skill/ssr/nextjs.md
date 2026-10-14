@@ -1,5 +1,83 @@
 # SSR — Next.js (App Router & Pages Router) / Remix
 
+
+> ### ⛔ Do NOT seed the catalog store during SSR here — three separate verdicts
+>
+> [core/rendering-mode.md](../core/rendering-mode.md) describes seeding `sTranslations` +
+> `currentlyLoadedLocale` during the render so `t()` server-renders. **That is permitted on
+> SvelteKit and not here.** `langsys-js-react` does re-export both settable signals, so the
+> code will look like it works. Measured **2026-08-30** against published
+> `langsys-js-react@0.6.7`, production builds.
+>
+> **1. Pages Router / plain `renderToString` — works, and the reason matters.**
+> 8 locales × 10 rounds all in flight, witnessed concurrency 58–80: 0/80 wrong.
+> **`getServerSideProps` runs *before* render**, so the idiomatic Pages Router shape puts the
+> await *before* the seed rather than between seed and read. **This is idiom, not
+> architecture** — React is not structurally safer. Force an `await` into that same app's
+> render body and it bleeds **70/80**, identically to streaming. Nuxt has the same safe shape
+> available (seed in a Nitro `request` hook, synchronous page — measured 0/80); it is simply
+> off its idiomatic path, because `useAsyncData` is how Nuxt teaches fetching and it awaits
+> inside `setup()`. **Same rule, different priors: safe-by-default here, near-certain
+> violation there.**
+>
+> **2. Streaming with any suspension between seed and read — unsafe, 70/80 wrong.**
+> The renderer is not the problem: `renderToPipeableStream` over a *synchronous* tree is
+> 0/80, and moving the seed *inside* the suspended subtree is also 0/80. It is the await
+> point between them. A narrowly safe placement therefore exists, but it is unshippable as
+> a rule — it is a property of the whole subtree, **nothing reports a violation** (no error,
+> no warning, no dev hint), and it breaks the moment anyone adds a `<Suspense>`, a lazy
+> import, or an `await` between the provider and a `t()` call.
+>
+> **3. App Router / RSC — non-functional. Not "unsafe": it cannot work at all.**
+> This one is not a race, and low traffic does not make it fine. The Server Component and
+> the Client Component hold **separate module instances** of `langsys-js-react`. The seed
+> lands in the react-server graph and reads back correctly *there*; the client component
+> reads a different singleton still in its initial state. Measured at **concurrency 1, one
+> request in flight**: every non-base locale renders base-locale content, every time.
+>
+> ```
+> <p id="serverSideGlobal">it-IT</p>              seed landed in the react-server graph
+> <p id="serverSideWord">Ciao</p>                 and reads back correctly THERE
+> <p id="word">Hello</p>                          the client component: untranslated
+> <p id="catalogKeys">["__uncategorized__"]</p>   client singleton still in initial state
+> ```
+>
+> That is exactly the production symptom this whole track exists to prevent — a localized
+> route byte-identical to the base locale — except that in App Router it is the **default
+> outcome of following the rule**, not an edge case reachable under load.
+>
+> > **⚠ How to test this, because the obvious harness certifies it as fine.** A
+> > concurrency harness asks *does response A contain response B's content?* On App Router
+> > that answer is **zero**, correctly — every response is uniformly wrong in the same way,
+> > so there is nothing to contaminate. The seed never reaches the reader at all.
+> >
+> > **Compare each response against its own expected content, not against the other
+> > responses.** One request is enough. A contamination-shaped detector passes this bug, which
+> > is this codebase's oldest failure mode: a check that produces no signal reads as a pass.
+>
+> ### The App Router story that does work — both halves measured
+>
+> **Crawler-visible copy: the pure catalog function in a Server Component.** Measured
+> 2026-08-30 — raw `curl`, no browser: localized routes return genuinely translated body
+> copy, ICU plurals intact (via the SDK's exported pure `interpolate`, so real plural rules),
+> `serverGlobalLocale` empty because no module state is touched at all. 8 × 10 concurrent:
+> **80 responses, 80 correct, 0 bleeds.** Immune to the graph split by construction — a pure
+> function has no singleton to land in the wrong graph. See §4 below, or
+> [`langsys-js-server`](../core/server-sdk.md).
+>
+> **Hydration: `init({ initialTranslations, initialTranslationsLocale })`** passed through
+> the RSC payload into a client boundary. Measured working — the client graph seeds, which is
+> the graph that needs it. **Do not describe this as fixing the flash** (see below); it fixes
+> the double fetch and the eventual content.
+>
+> **Never touch the global stores from a Server Component.**
+>
+> **Hazard 2 applies to all three, regardless of renderer.** See "the failure path must
+> reset" in [core/rendering-mode.md](../core/rendering-mode.md); it bit under the
+> *synchronous* renderer, so passing verdict 1 buys no protection from it.
+
+
+
 Read [integrate/react.md](../integrate/react.md) first. This adds the server half.
 
 > **Decide the rendering mode first: [core/rendering-mode.md](../core/rendering-mode.md).**

@@ -252,8 +252,8 @@ $effect(() => {
 | Export | Type | Notes |
 |---|---|---|
 | `t` | `Readable<TFunction>` | Use as `$t('Phrase', 'Cat', params?)` |
-| `currentlyLoadedLocale` | `Readable<string>` | Lags `UserLocaleStore` during fetch |
-| `sTranslations` | `Readable<iCategories>` | Raw catalog. Rarely needed |
+| `currentlyLoadedLocale` | `Signal<string>` — **settable** | Lags `UserLocaleStore` during fetch. `.set()` is how an SSR seed hands over the locale |
+| `sTranslations` | `Signal<iCategories>` — **settable** | The catalog. **Load-bearing for SSR** — `.set()` during the render is what makes `t()` server-render. See [core/rendering-mode.md](../core/rendering-mode.md) |
 | `LangsysApp` | | `init` takes a Svelte `Writable<string>` |
 | `canonicalizeLocale` | | `'en-us'` → `'en-US'` |
 | `<Translate>` | | `category?` `custom_id?` `label?` `tag?` `class?` `params?` |

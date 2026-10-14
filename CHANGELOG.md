@@ -14,6 +14,72 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 ## Unreleased
 
 ### Fixed
+- **`invariants.md` said "the phrase argument must always be a literal."** The lint rules
+  never enforced that; they flag *construction* (template substitution, concatenation,
+  `sprintf()`, PHP `"$var"`), not a variable argument. The real rule is cardinality:
+  `t(product.description)` from a CMS is a bounded editorial set and is correct. Corrected in
+  `invariants.md`, `SKILL.md` and the rules `install.mjs` inlines for Codex/Gemini/Cursor,
+  which now also say plainly that content from a CMS, database or third-party API needs no
+  special handling.
+- **`compilerOptions.experimental.async` is now documented as unsafe with a module-global
+  seed**, with the measured table. The trigger is not the flag but a read landing after an
+  `await` in the same script — 3/4 wrong-locale, and that is the shape most people write.
+  With the flag on, SvelteKit leaves the structurally-guaranteed category and joins Nuxt's.
+- **Corrected the mechanism:** `render()` returns a `RenderOutput` that is also a thenable,
+  fully populated synchronously only in the default renderer — not "a string, not a Promise".
+- **`translationsLoadingPromise` was described as a success signal in six places.** Verified
+  against published `0.6.5`: it is pre-resolved before `init()`, stays pre-resolved if key
+  validation fails, and resolves normally on a failed catalog fetch. Its declared type is
+  `Promise<unknown>` with no JSDoc — the success semantic was this skill's inference. Now
+  documented as *"the change is no longer in flight"*, with the note that a locale mismatch
+  is not a failure test either and an error state needs a caller-supplied timeout.
+- **App Router now has a documented path instead of a prohibition.** The pure catalog
+  function in a Server Component is measured working — 80/80 concurrent, ICU intact, no
+  module state touched — and is immune to the module-graph split by construction.
+  `init({ initialTranslations })` covers hydration.
+- **Documented the persisted-catalog defect and that the component-body seed closes it.**
+  `sTranslations` persists to localStorage and rehydrates at module load with **no locale
+  tag**, so nothing can tell it is stale. On a client-only app that is a 180–240ms flash of
+  the previously viewed language; on a seeded SSR page it *destroys correct server output* at
+  hydration. Seeding in the component body closes both that and the concurrency window — one
+  placement, two hazards. `init({ initialTranslations })` in `onMount` does not help, because
+  it runs after the stale paint.
+- **Corrected: "a total outage looks fine" holds only from a cold process.** Once any locale
+  has succeeded the singleton is poisoned, and a later total outage mislabels every locale
+  rather than none.
+- **SSR catalog seeding is now framework-scoped, measured rather than assumed.** Permitted
+  on SvelteKit; **unsafe in practice on Nuxt** — a safe position exists (`app.vue` setup
+  above any await) but `await useAsyncData`, the idiomatic Nuxt fetch, takes it from 0/80 to
+  67/80; **non-functional on the Next App Router**, where Server and
+  Client Components hold separate module instances so the seed lands in a graph the reader
+  is not in — 100% of non-base locales wrong at concurrency 1. The operative rule is *no
+  suspension between the seed and any `t()` read*, which is a subtree property, not a
+  statement about where the seed goes.
+- **The pure catalog helper is re-ranked, not demoted.** It ranks first on App Router and
+  Nuxt: holding no module state, it is immune to both cross-request leakage and the
+  module-graph split by construction.
+
+- **SSR guidance was wrong about `t()`, and it cost seven production sites their search
+  visibility.** `core/rendering-mode.md` claimed all four primitives render base language
+  during SSR "always" and that seeding the catalog server-side was an unavoidable data
+  race. `t()` server-renders correctly once `sTranslations` and `currentlyLoadedLocale` are
+  set during the render — a path the SDK's own `markLoaded` JSDoc describes. Rewritten with
+  the four conditions that keep seeding safe, verified on SvelteKit under concurrent load.
+  `<Phrase>` / `<Translate>` genuinely cannot server-render; the track now gives the real
+  reason (effects mount DOM walkers) and the measured 4–24% residue that implies.
+- **`verify.md` told readers `curl` could never verify SSR translations.** True only of the
+  unseeded pattern this skill documented, and it steered people away from the single check
+  that exposes the failure. Now split by whether the app seeds, with the byte-identical
+  diff test and both concurrency tests.
+- **`integrate/svelte.md` typed `sTranslations` as `Readable` and called it "rarely
+  needed".** It is `Signal<iCategories>` with a public `set()`, and it is the load-bearing
+  SSR primitive.
+- **`ssr/sveltekit.md` recommended a render gate.** A replacing loading/error state is
+  server-rendered on a slow or failed fetch, so a crawler indexes the spinner as the page.
+  Failure states now overlay, never replace.
+- **`ssr/nextjs.md` and `ssr/nuxt.md`** carry an explicit marker: the seeding exports exist
+  in React and Vue, but the synchronous-render safety argument is unverified there
+  (streaming SSR with Suspense, `async setup()`).
 - **`VERIFIED.md` contained two tables that contradicted each other.** The `Defect status`
   table still called `langsys/langsys-php` unpublished and four Svelte/Vue fixes
   *"fixed, unreleased"*, while the table above it recorded all of them as RESOLVED. Re-checked

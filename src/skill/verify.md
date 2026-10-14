@@ -2,15 +2,29 @@
 
 **The integration is not done until this passes.** Every check here targets a failure that is invisible in the base language.
 
-> ## Verify in a real browser. `curl` cannot do it.
+> ## Which check is valid depends on whether you seeded the catalog.
 >
-> In React, Vue and Svelte the catalog is populated by `init()` in a client-only hook, so **body copy translates after hydration**. `curl | grep` therefore shows the base language on a page that is working perfectly — *and shows exactly the same thing on one that is completely broken*. It cannot distinguish them.
+> **If the app seeds the store during SSR** (see [core/rendering-mode.md](./core/rendering-mode.md)),
+> `t()` body copy is in the served HTML, so **`curl` is not merely valid — it is the check
+> that matters**, and it is the only one a crawler's view agrees with. Run
+> `ssr-i18n-check` (§1) on at least one non-base locale before every deploy that touches
+> i18n. PHP has always been in this category.
 >
-> This has cost a production team an afternoon. They shipped nav labels rendered as `{child.label}` instead of `t(child.label, 'Main Menu')`; every `curl` check looked identical to the working case.
+> **If the app does not seed** — client-only, or SSR without a seed — body copy translates
+> after hydration. `curl | grep` then shows the base language on a page working perfectly
+> *and* on one completely broken, and cannot distinguish them. This has cost a production
+> team an afternoon: nav labels shipped as `{child.label}` instead of
+> `t(child.label, 'Main Menu')`, and every `curl` check looked identical to the working
+> case. There, open a browser.
 >
-> A view-source check is valid for exactly two things: the **server-resolved head** (see [core/rendering-mode.md](./core/rendering-mode.md)), and confirming no API key is in the bundle. For everything else, open a browser.
+> **Correction, 2026-08-30.** This section previously said `curl` could never do it. That
+> advice was self-confirming: it was true only of the unseeded pattern the skill itself
+> documented, and it steered people away from the single check that would have exposed the
+> problem. Seven production sites served byte-identical localized routes for months behind
+> it.
 >
-> PHP is the exception — `translatePage()` translates server-side, so its output *is* checkable from the response body.
+> `<Phrase>` and `<Translate>` are base-locale in server HTML regardless — no check changes
+> that, and a residue percentage is the honest measure of it, not a failure.
 
 ## 1. Static — build and lint
 
@@ -21,6 +35,69 @@ npx ast-grep scan -c .langsys/skill/../lint/sgconfig.yml
 ```
 
 Lint must be **clean of errors**. Warnings need a human decision — do not suppress them to get green.
+
+### `ssr-i18n-check` — the one-command SSR test
+
+**Only for an app that seeds during SSR** (see [core/rendering-mode.md](./core/rendering-mode.md)).
+Strip scripts, styles and head from two locales of the same route and compare the rendered
+text. If the localized page is byte-identical to the base locale, translations are not
+reaching the server — every localized URL is a duplicate of the base one, and a search
+engine will fold them into a single cluster.
+
+Boolean, no browser needed. Belongs in the deploy checklist for anything touching i18n.
+
+```bash
+#!/bin/bash
+# ssr-i18n-check https://site.example /about it
+BASE=$1; ROUTE=$2; LOC=$3
+curl -sL "$BASE$ROUTE"      -o /tmp/a.html
+curl -sL "$BASE/$LOC$ROUTE" -o /tmp/b.html
+python3 - <<'EOF'
+import re, sys
+def dom(p):
+    h = open(p, encoding='utf-8', errors='replace').read()
+    for t in ('script', 'style', 'head'):
+        h = re.sub(r'<%s\b.*?</%s>' % (t, t), '', h, flags=re.S | re.I)
+    return re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', h)).strip()
+a, b = dom('/tmp/a.html'), dom('/tmp/b.html')
+if a == b:
+    print("FAIL: localized SSR is byte-identical to the base locale"); sys.exit(1)
+def s(t): return {x.strip() for x in re.split(r'(?<=[.!?]) ', t) if len(x.strip()) > 35}
+left = len(s(a) & s(b)) / max(1, len(s(b)))
+print("PASS - untranslated prose remaining: %.0f%%" % (100 * left))
+EOF
+```
+
+**The percentage is not a failure — it is the `<Phrase>`/`<Translate>` residue**, which no
+seeding removes. Record it. It is the honest measure of how much of the page a crawler can
+actually read. A production platform measured 4–24% per page after seeding landed.
+
+### Two concurrency tests, if you seed
+
+Seeding writes to a per-process singleton, so both directions need proving:
+
+- **Interleaving.** Fire every locale you support concurrently at the *built production
+  server* and assert each response came back in its own language.
+
+  > **Two reproducer traps, both of which produce a confident wrong number.** A
+  > `<svelte:boundary>` with a `pending` snippet masks the whole effect — one run reported
+  > 4/4 "bleeds" that were all the pending snippet. And a component-body seed left in place
+  > while testing a *hook* seed re-seeds synchronously just before render, hiding the hook
+  > entirely and reporting 0/80 for a shape that actually bleeds 70/80. Prove a single
+  > non-concurrent render returns real post-await content before trusting any number, and
+  > run the safe shapes as controls — an unexplained failing number is not a finding.
+- **Sequential carry-over — the one that actually ships.** Run a proxy that fails *one*
+  locale while another stays warm. Request the warm one, then the failing one, and assert
+  the failing one falls back to the **base locale**, not the warm locale's language.
+  Confirmed to bite under a *synchronous* renderer, so passing the interleaving test above
+  buys no protection from it.
+
+  **Run this test from a cold process, and again from a warm one.** A total outage from
+  cold renders untranslated base language and looks completely fine — which is why the bug
+  survives a first round of testing. But once *any* locale has succeeded even once, the
+  singleton is poisoned, and a subsequent total outage mislabels **every** locale rather
+  than none. In a long-lived server process, poisoned is the steady state and cold is the
+  exception. Testing only from cold is how you conclude a total outage is harmless.
 
 ## 2. Structural — inspect the diff
 

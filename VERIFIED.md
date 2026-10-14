@@ -514,6 +514,659 @@ reader, including the one who wrote it.
 Reading a citation back costs one `sed -n 'Np'`. Do it for every citation, including those
 that arrived from someone who had clearly done the work.
 
+
+---
+
+## Defect in THIS SKILL's own guidance — found in production, 2026-08-30
+
+**The most consequential error the skill has shipped.** Recorded here because this file's
+job is claim → version → evidence, and a wrong claim of ours belongs in it as much as an
+upstream one.
+
+**What we claimed.** `core/rendering-mode.md`: *"In React, Vue and Svelte, the reactive
+primitives — `t()`, `$t()`, `<Phrase>`, `<Translate>` — render the base language during
+server rendering. Always."* Justified by *"there is no request-scoped translator in the
+SDK"* and *"seeding those globals server-side is a cross-request data race."*
+
+**What is actually true.**
+
+| Claim | Verdict | Evidence |
+|---|---|---|
+| `<Phrase>` / `<Translate>` cannot server-render | **Correct**, wrong reason given | They mount DOM walkers in effects; effects do not run during SSR. Not a seeding problem |
+| `t()` cannot server-render | **FALSE** | `sTranslations.set()` + `currentlyLoadedLocale.set()` during the render makes `t()` resolve for the whole tree |
+| No request-scoped translator exists | **True but inert** | There is none; the render being synchronous closes the window anyway |
+| Seeding globals is a data race | **False as absolute** | Shared state, yes — safe under four stateable conditions. 8 locales × 10 rounds concurrent on `adapter-node`: 80 responses, zero bleed |
+
+**Verified against published artifacts, 2026-08-30** (not a working tree):
+
+- `langsys-js-typescript@0.6.5` — `dist/index.d.ts:18-26`, `Signal<T>` exposes `set()`,
+  `get()`, `update()`. Publicly settable.
+- `langsys-js-typescript@0.6.5` — `dist/index.d.ts:242-249`, the JSDoc on
+  `Translations.markLoaded` reads *"Record that a locale's catalog is already present
+  without fetching — e.g. after an SSR handoff seeds `sTranslations` +
+  `currentlyLoadedLocale`."* **The SDK documented the path the skill said did not exist.**
+- `langsys-js-svelte@3.6.10`, `langsys-js-react@0.6.7`, `langsys-js-vue@0.2.1` — all three
+  re-export `sTranslations` and `currentlyLoadedLocale` from the core. Not Svelte-only.
+
+**Production impact.** Seven affiliate sites, SvelteKit. Every localized route served HTML
+byte-identical to the base locale — `/benefits` vs `/it/benefits`, 4473 characters each;
+`/technology` vs `/it/technology`, 3735 each — with correct `hreflang` promising they were
+translations of one another. Google folded them into one cluster and kept one arbitrary
+representative: an exact-match **English** phrase returned exactly one result network-wide,
+and the URL was `/it/`. Undetected for months because every page is correct in a browser.
+
+**Measured ceiling after the fix: 4–24% of prose per page** remains base-locale, all of it
+inside `<Phrase>` / `<Translate>`. This is the honest limit of an SSR-first integration
+until those get a server path (`0.2.0`). Separately, 21 of 60 `<Translate>` blocks on that
+platform wrapped plain text with no markup — invisible to crawlers for no benefit.
+
+**Why it survived.** `verify.md` told readers *"Verify in a real browser. `curl` cannot do
+it."* That was true **only of the unseeded pattern this skill documented**, and it steered
+people away from the one check that exposes the bug. A self-confirming instruction: the
+guidance created the condition that made its own verification advice correct.
+
+**Framework scope — measured 2026-08-30, published tarballs, production builds.**
+
+Independently run by the React and Vue SDK owners in their own repos, 8 locales × 10 rounds
+all in flight:
+
+| Framework / config | Wrong-language responses |
+|---|---|
+| Svelte — body seed, synchronous tree (`3.6.10`) | 0 / 80 |
+| React — `renderToString` (`0.6.7`) | 0 / 80 |
+| React — `renderToPipeableStream`, synchronous tree | 0 / 80 |
+| React — streaming, suspension **between** seed and read | **70 / 80** |
+| React — streaming, seed **inside** the suspended subtree | 0 / 80 |
+| React — **App Router / RSC**, concurrency **1** | **100% of non-base locales** |
+| Vue — synchronous `setup()` (`0.2.1`) | 0 / 80, and 0 / 400 |
+| Vue — `async setup()` between seed and read | **65–72 / 80** |
+| Vue — `<Suspense>` around an **async** child | **68 / 80** |
+| Nuxt 3 — `app.vue` setup, before any await | **0 / 80** |
+| Nuxt 3 — page inside `<NuxtPage>` Suspense, **synchronous** page | **0 / 80** |
+| Nuxt 3 — `app.vue` setup, after `await useAsyncData` | **67 / 80** |
+| Nuxt 3 — page inside Suspense, after `useAsyncData` | **71 / 80** |
+
+**The renderer is not the variable; the await point is.** React's last two rows isolate it:
+streaming is clean when seed and read share a synchronous block, and the same renderer bleeds
+70/80 when a suspension sits between them. Vue's owner reached it from the other direction —
+`renderToString` runs synchronously until its first `await`, and a fully synchronous tree
+completes inside that prefix.
+
+**A Suspense boundary is not itself the hazard — this corrected a claim published here.**
+The first Vue report derived that Nuxt must be unsafe everywhere, since Nuxt wraps pages in
+`<Suspense>` and the Suspense configuration bled 68/80. The middle step was false: that
+configuration wrapped an *async* child, so it measured the await, not the boundary. A real
+Nuxt 3 build shows Suspense around a **synchronous** page is clean at 80 concurrent. The
+owner re-ran and retracted their own derivation before it went further than one document.
+
+**So there is one rule, identical in all three frameworks:** no await between the seed and
+any `t()` read. Frameworks differ only in how likely a violation is, and whether a caller
+can guarantee its absence.
+
+- **SvelteKit** — permitted; satisfiable by inspection.
+- **Nuxt** — a safe position exists (`app.vue` setup above any await, even with
+  Suspense-wrapped routes below) but collapses the moment anyone writes `await
+  useAsyncData`, which took that exact position from 0/80 to 67/80. **Unsafe in practice,
+  not structurally forbidden** — and the distinction matters for the document's credibility:
+  a reader who tests the narrow safe case, finds it working, and has been told it is
+  impossible will stop trusting the rest.
+- **Next Pages Router** — same shape: satisfiable, easily broken.
+- **Next App Router** — a different failure; see below.
+
+**This corrected a claim in this skill within 48 hours of writing it.** `rendering-mode.md`
+condition 2 originally read "no `await` before the seed". The measured boundary is *no
+suspension anywhere between the seed and any `t()` read* — a subtree property, not a
+statement about the line you write. The Svelte 0/80 came from one production app that
+happened not to contain that shape; a SvelteKit-specific `{#await}` re-measurement is in
+flight.
+
+**Two properties worth more than the counts:**
+
+- **It converges, it does not scatter.** Suspended requests all resume after the others have
+  seeded, so they read the same last writer: a near-uniform wrong language, 70 of 80 from a
+  single source. An operator sampling a few responses sees one consistent wrong language and
+  reads it as a **config error rather than a race**.
+- **"A total outage looks fine" is true only from cold.** Once any locale has succeeded, the
+  singleton is poisoned and a later total outage mislabels *every* locale instead of none. In
+  a long-lived process, poisoned is the steady state. The reassuring version of this was
+  written into two documents here and is now corrected.
+
+**App Router is a distinct failure, not a severe case of the same one.** The Server
+Component and the Client Component hold *separate module instances* of `langsys-js-react`.
+The seed lands in the react-server graph and reads back correctly there; the client
+component reads a different singleton, still in its initial state. At **concurrency 1**,
+every non-base locale renders base-locale content — the exact production symptom this work
+started from, except that in App Router it is the default outcome of following the rule
+rather than an edge case reachable under load. "Unsafe under concurrency" is the wrong
+phrase: it understates it and implies low traffic makes it fine.
+
+**Consequence for the pure catalog helper.** It was demoted to "third choice of three" on
+2026-08-30 on the assumption that seeding was strictly better wherever it worked. That is
+false for React App Router and Nuxt, where it now ranks **first**: holding no module state,
+it is immune to both failure modes by construction — nothing to leak across requests, and
+nothing to land in the wrong module graph.
+
+### App Router has a working path — measured 2026-08-30
+
+Reported by the React SDK owner; not re-run here.
+
+| Approach | Result |
+|---|---|
+| Pure catalog function in a Server Component | `curl` returns genuinely translated body copy, ICU plurals intact via the exported pure `interpolate`, module state untouched. 8 × 10 concurrent: **80/80 correct, 0 bleeds** |
+| `init({ initialTranslations })` via RSC payload into a client boundary | Client graph seeds correctly. Fixes the double fetch and the eventual content — **not** the flash |
+| Seeding the global stores from a Server Component | Non-functional; separate module graphs |
+
+**This reverses the 2026-08-30 demotion of the pure catalog helper**, now on measurement
+rather than inference. It ranks first wherever seeding is prohibited.
+
+**Pages Router is safer by idiom, not by architecture** — a claim corrected mid-thread
+after it was first reported as architectural. `getServerSideProps` runs *before* render, so
+the default shape puts the await before the seed. But forcing an `await` into that same
+app's render body bleeds 70/80, and **Nuxt has the identical safe shape available** — seed
+in a Nitro `request` hook with a synchronous page, measured 0/80. Nuxt's safe path simply
+is not the one its own docs teach. Same rule everywhere; the frameworks differ in their
+*priors*, not their capabilities: safe-by-default on Pages Router, near-certain violation on
+Nuxt.
+
+### New defect: the persisted catalog has no locale tag
+
+Found by the React owner while measuring App Router, root-caused and extended by the Svelte
+owner. Reported to me; not re-run here.
+
+`sTranslations` is `persist('translations', …)` and reads localStorage at **module load**,
+before any `init()`. `currentlyLoadedLocale` is a plain signal and is **not** persisted. So
+the stored catalog carries **no locale tag** — nothing downstream can tell it is stale or
+which locale it belongs to. That asymmetry is the defect; everything below is a symptom.
+
+**Client-only symptom.** With a prior `fr-FR` visit, loading `/de-DE` renders "Bonjour" for
+180–240ms before flipping to "Hallo" (React, sampled every 60ms). Cleared storage gives the
+expected base-language flash instead, ~300ms. On a locale switcher — the most likely
+navigation there is — the user watches the language they just left.
+
+**SSR symptom, and it is worse: it destroys correct server output.** Measured on SvelteKit —
+server HTML correctly reads `Hola` under `<html lang="es-ES">`, then localStorage wins at
+module load and hydration repaints `Ciao`. A crawler that executes JavaScript sees the stale
+language. Server-rendering the right language and then replacing it is worse than never
+server-rendering it, for precisely the audience seeding was for.
+
+**The component-body seed closes it — one placement, two hazards.** The seed runs during the
+hydration render pass, before any child reads, overwriting the stale catalog before anything
+renders from it. Without it, hydration paints `Ciao`; with it, `Hola es-ES` and no flash.
+This is a second, independent justification for the placement rule.
+
+**`init({ initialTranslations })` in `onMount` / `useEffect` does not fix it** — those run
+after hydration, when the stale paint has already happened.
+
+Compounding: `init()`'s `initialTranslations` block runs after `await LangsysAppAPI.validate()`
+(measured 405–490ms; environment-specific, but structurally it gates data already in hand on
+a network round-trip). A failed validate does not early-return; the seed still lands.
+
+**A fix already exists upstream, and it is broader than anything proposed here.** Verified
+in the `langsys-js-typescript` repo on 2026-09-01: `origin/feature/838_write_key_gating_reland`
+(26 commits ahead of `main`, mid-rebase) replaces `persist` with **`persistScoped`**, keying
+the catalog by **project *and* locale**, with `scopeCatalogCache` called from `change()` to
+solve the ordering problem — `persist` reads its key at module load, before project or locale
+exist. Superseded keys are cleaned up.
+
+That branch's own doc comment describes the measured defect in advance, and names a second
+population nobody in this thread raised: **two projects sharing an origin overwrote and then
+served each other's content.** The Svelte owner's proposal — persist `{locale, catalog}` and
+discard on mismatch — was correct and is a strict subset of it.
+
+**This is unreleased.** Published `0.6.5` still has the bare `translations` key, so every
+measurement above stands for what users install today. Re-verify when 838 lands; the pins
+are not moved on the existence of a branch.
+
+**Open, untested.** The client has no cross-request concurrency hazard — one browser, one
+user — so the *server-side* prohibition on seeding does not automatically forbid a
+client-side body seed in React or Vue. Whether that closes the flash there has not been
+measured. Do not assume it does.
+
+### Also corrected here
+
+The Svelte package's `README-SSR.md` states that server-rendered translated body copy is not
+achievable on SvelteKit. That is true of the `onMount` + `initialTranslations` pattern it
+documents, and was measured and published by that owner earlier this month — but it is false
+of the component-body seed, which server-rendered `Ciao` inside `<html lang="it-IT">` clean
+at 400 concurrent. That owner is correcting the guide rather than leaving two Langsys
+documents disagreeing about whether SvelteKit can SSR translations.
+
+### Corrected by measurement: "a total outage looks fine"
+
+Both the React and Vue owners independently disproved this after it was written here. It
+holds only from a **cold** process. Warm — one prior success, then everything 500s — every
+locale renders in the previously-succeeded language:
+
+```
+/it-IT -> "Ciao"  /es-ES -> "Ciao"  /fr-FR -> "Ciao"  /ja-JP -> "Ciao"   globalLocale=it-IT
+```
+
+Strictly worse than the partial outage originally framed as the dangerous case, because it
+is *all* requests rather than some. A long-lived server is warm essentially always, so the
+cold result is the unrepresentative one.
+
+### Svelte re-measured: the recommendation holds, the reason was wrong
+
+Reported by the Svelte SDK owner; not re-run here. Published `langsys-js-svelte@3.6.10`,
+production `adapter-node`, 8 × 10 in flight, with a positive control (70/80 when
+deliberately broken) proving the harness detects bleeds on this stack.
+
+| Configuration | Wrong-language responses |
+|---|---|
+| Seed in `+layout.svelte` body, synchronous page | 0 / 80; 0 / 400 stressed; 0 / 70 base-locale excluded |
+| `{#await}` between seed and read | 0 bleeds — renders nothing server-side |
+| Svelte 5 `experimental.async`, real `await` in a child | 0 bleeds — same |
+| **Seed in `hooks.server.js`, `await resolve()`** | **70 / 80** |
+
+**The caveat published here was too pessimistic.** This file said the Svelte result might be
+a property of the reference codebase rather than the framework. It is the framework:
+`render()` from `svelte/server` returns a string, not a Promise, and cannot yield, so **no
+component-tree construction can place a suspension between seed and read**. The condition is
+structurally guaranteed and survives refactors.
+
+**A real trap was found that nobody had asked about.** Seeding in a `handle` hook — the
+idiomatic home for per-request setup — then awaiting `resolve()` bleeds 70/80. The rule for
+Svelte is therefore *seed in the component body*, and the reason is that this is the only
+position with no await between it and the tree it feeds.
+
+**`{#await}` is safe and invisible.** Zero contamination because the read never happens
+server-side; the response body is the pending branch. Any copy that must reach a crawler
+cannot sit behind one.
+
+**Two reproducer hazards recorded by that owner**, both instances of measuring the wrong
+thing: a layout-body seed left in place masks a hook seed entirely (first run reported 0/80
+and nearly certified hooks as safe); and the fixture word `Hallo-NL` contains `de-DE`'s
+`Hallo`, so a substring scan reports 10 phantom cross-locale hits per run.
+
+### Cross-check against the published Svelte guide — 2026-09-01
+
+Verified **here**, against the published `langsys-js-svelte@3.6.14` tarball (not the repo,
+and not `3.6.10` which this file previously cited).
+
+**The two documents agree.** That package's README now carries the same seeding pattern the
+skill's `ssr/sveltekit.md` does, on every load-bearing point: layout component body, `$t()`
+resolving during SSR, safety grounded in the server renderer being unable to yield, 400
+requests × 8 locales, the stale-locale flash also being closed by it, and `hooks.server.js`
+bleeding 70/80. No contradiction to reconcile.
+
+**Two defects found in that published artifact**, both live at `3.6.14`:
+
+1. **The README contradicts itself about ten lines apart.** Its "Reactive stores" table types
+   `sTranslations` as `Readable<iCategories>` and annotates it *"Rarely needed in app code"*,
+   directly above the SSR section that describes seeding that store as the entire mechanism.
+   `sTranslations` is `Signal<iCategories>` with a public `set()` — verified against the
+   `langsys-js-typescript@0.6.5` tarball. **This skill shipped the identical defect** in
+   `integrate/svelte.md` until 2026-08-30; it is the one line that hid the seeding path.
+2. **`README-SSR.md` is not in the tarball.** Only `README.md` ships, yet it defers *"limits
+   and the failed-fetch case"* — hazard 2, the reset-on-miss rule — to that file. So an
+   installed user can implement the pattern correctly and never encounter its safety
+   condition. The pattern ships; the condition does not.
+
+**Pin note.** This file's Svelte citations reference `3.6.10`, the version the concurrency
+work measured. `3.6.14` is latest, and `drift-guard` reports **0 regressions** against it —
+but that guard only checks the `DEFECTS` array, not the SSR claims, so the zero is narrower
+than it looks. Per this repo's rule the pins are **not** bumped on version number alone; the
+export and `Signal` claims above were re-verified against `0.6.5` core and hold.
+
+### The inverse of the Svelte tarball gap — Vue, verified 2026-09-01
+
+Checked by the Vue owner against `npm pack --dry-run --json` rather than against the `files`
+array, on the grounds that `files` can list something a glob or `.npmignore` still drops.
+**Worth adopting as the method:** a `files` entry is an intention, the pack output is the
+artifact.
+
+Result: `README.md`, `README-SSR.md` and `CHANGELOG.md` all ship. So Vue has no tarball gap —
+and that is **worse than Svelte's, not better**. Svelte withholds a document containing a
+safety condition. Vue reliably delivers one that walks the reader into base-language SSR,
+because its SSR walkthrough calls `init()` inside `onMounted`. The file ships; its guidance
+is the defect.
+
+**Deliberately left unfixed, and the reasoning is right.** The obvious local patch — move the
+seed into `app.vue` setup — is exactly the fragile position the measurements condemned
+(0/80 → 67/80 the moment anyone adds `await useAsyncData`). Patching it would make that
+document agree with this skill while teaching the thing that breaks on the next fetch someone
+writes. Blocked pending a decision, and visibly wrong beats quietly wrong and plausible.
+
+### `translationsLoadingPromise` was documented here as a success signal — it is not
+
+Flagged by the React owner from the `localstorage-locale-flash` thread; **verified here**
+against published `langsys-js-typescript@0.6.5`, `dist/index.js` and `dist/index.d.ts`.
+Wrong in three ways, not the one reported:
+
+1. **Before `init()`** — the constructor assigns `this.translationsLoadingPromise =
+   Promise.resolve()`. Awaiting it at startup returns immediately, nothing loaded.
+2. **On failed key validation** — the real assignment sits inside `sUserLocale.subscribe(...)`
+   behind `if (!validateResponse.status) return;`, so the property keeps the constructor's
+   already-resolved promise permanently.
+3. **On failed catalog fetch** — it is assigned `this.Translations.change(locale, false)`,
+   which returns normally rather than throwing.
+
+Declared type is `Promise<unknown>` with **no JSDoc**. The artifact never claimed a success
+semantic; this skill inferred one and stated it in six places as *"resolves when the current
+locale's translations are ready"*. Corrected 2026-09-01.
+
+**The related trap, also recorded:** a locale mismatch is not a failure test. The locale write
+is deferred behind the promise, so `currentlyLoadedLocale !== requested` just after settle is
+the normal success path mid-flight. **No signal in the SDK separates a failed fetch from one
+that just succeeded** — an error state requires a caller-supplied timeout. The Svelte binding
+had shipped the `readyResolve` mechanism in a changelog and is correcting it; this skill never
+described that mechanism, so only the success-semantic claim needed fixing.
+
+### A third variant of the scope problem: the facts moved, the document didn't
+
+The React owner's `README-SSR.md` promised three things — *"the first paint already reflects
+the seeded translations"*, *"No flash of untranslated content"*, *"Better SEO with
+server-rendered translations"* — all measured false on the App Router **during this very
+thread**, while that guide sat unchanged. Fixed in `0d96a33`, with the dropped claims called
+out explicitly rather than deleted, on the reasoning that *a silently shorter list reads as
+tidying rather than as a retraction*.
+
+Their framing is the part worth keeping: **the guide was correct when written and was
+invalidated by its own author's later measurements, and no review catches that, because a
+document does not change when the facts do.** Distinct from items 1–7 (claims wrong about
+their scope) and from item 8 (a correct claim that was no longer needed). Here the claim was
+correct, needed, and quietly expired.
+
+**Unreleased, and this is the sharpest release argument in the set.** npm `0.6.7` still serves
+the old guide, so an installed React user is today reading that they get server-rendered
+translations and no flash on the App Router, and may build an SEO strategy on it. That is a
+step beyond documentation drift.
+
+### Both Svelte README defects fixed — `3.6.15`, verified here 2026-09-01
+
+Reported by this skill on 2026-09-01, fixed and published the same day. **Verified against
+the downloaded `langsys-js-svelte@3.6.15` tarball**, not on report:
+
+- Stores table now types all three as `Signal<T>`; *"Rarely needed in app code"* is gone;
+  `t` gained an explicit **"Never write to it"** — the type had been quietly wrong in the
+  *safe* direction, so the prohibition was implied rather than stated.
+- `README-SSR.md` **is now in the tarball**, and the two safety conditions are *also* inlined
+  into `README.md`. That owner did both rather than choosing, on the reasoning that shipping
+  the guide alone fixes a broken link but leaves the safety condition one click from a reader
+  who already believes they have the pattern — *"the same shape as the defect itself: the
+  pattern was reachable and its condition wasn't."*
+
+**A technical condition we did not have, now adopted into `ssr/sveltekit.md`:** a failed
+fetch must yield `{}` from `load`, never `null`/`undefined`, because `$t()`'s optional chain
+sits on the **second** hop (`cats[cat]?.[phrase]`) — a nullish catalog throws on the first
+lookup rather than falling back to base language. Our reset branch already produced an object,
+so the guidance was safe; it is now safe *for a stated reason*.
+
+**Their diagnosis of why it survived is worth keeping:** `c756e56` corrected this claim in the
+`index.ts` JSDoc and in `CLAUDE.md` and never touched the README table, because *"a grep for
+`Readable` would have caught it; I greped for the sentence I remembered writing."* And on the
+annotation itself — it was **load-bearing in the negative direction**: it did not merely fail
+to describe the mechanism, it actively told a careful reader not to look. Two documents
+converging on the right pattern does not help when a type signature upstream of both says the
+mechanism is not there.
+
+**Superseded by `3.6.16` within the hour.** A correctness review of the `3.6.15` commit found
+six defects. Three matter here:
+
+1. **The inlined safety conditions shipped two of three.** The dropped one was
+   `experimental.async` — per that owner, *"the one that voids the guarantee entirely"* — and
+   the same edit removed the pointer to the guide that would have led a reader to it. So
+   `README.md` asserted flatly that the renderer "cannot yield" while `README-SSR.md`, now
+   shipping **beside it in the same tarball**, said a one-line config flag makes it await
+   mid-tree. **Two installed documents contradicting each other, created by the release that
+   put them together.**
+2. **`README-SSR.md` shipped pointing at `CLAUDE.md` and `CHANGELOG.md`, neither of which
+   ships.** In that owner's words: *"I fixed a doc that linked to a document installed users
+   don't have by shipping a document that links to two more."* This skill cites neither path,
+   so nothing here breaks — but it is the reported defect recurring one layer down, inside
+   its own fix.
+3. **`Signal<T>` was not re-exported at `3.6.15`.** `import type { Signal } from
+   'langsys-js-svelte'` fails TS2305 against that tarball; the old `Readable<T>` was at least
+   importable from `svelte/store`. For that one line `3.6.15` was a **net regression for
+   anyone using the type rather than reading it** — the prose got more correct while the code
+   got less usable, which a doc review does not look for. Re-exported in `3.6.16`; gate any
+   typed store annotation at `>=3.6.16`. This skill shows the types in a table and never
+   imports them, so nothing here breaks.
+
+**Pin:** `3.6.16` supersedes `3.6.10` for the store-type claims. Per this repo's rule the
+pins are moved only against re-verified evidence — the store table above was re-read from the
+`3.6.15` tarball; the concurrency measurements remain as run against `3.6.10`.
+
+### Cross-project bleed — measured on published `0.6.5`, not inferred
+
+The React owner declined to measure the `838` branch because it was force-pushed mid-rebase
+during the exchange — *"a number I take off a branch mid-rebase can be stale before I finish
+writing it up, and worse, it would look like a measurement rather than a snapshot of a moving
+target."* Correct call, and it matches this file's premise: packages document published
+behaviour, because that is what `npm install` gives people.
+
+Instead they measured the half nobody had. Two projects, one origin, published `0.6.5`, real
+Chromium:
+
+```
+project A seeds      shown "Ciao@projA";  localStorage keys: ["translations"]   <- one bare key
+project B, unseeded  251ms / 751ms / 1251ms / 2001ms all "Ciao@projA"
+                     final: client="Ciao@projA"  server="Ciao@projB"  phase="init-resolved"
+```
+
+**Project B serves project A's content** beside correct project-B copy from the server, with
+`init` reporting itself resolved. So the `838` branch's doc comment is confirmed by an
+independent measurement rather than by its own author's description of the bug being fixed.
+
+**Two scoping caveats, both required when stating this:**
+
+1. **Same origin only.** Different origins get separate `localStorage`; this needs two Langsys
+   projects on one host — multi-tenant under a single domain, or projects sharing a dev
+   server. Real, not universal.
+2. **Permanence depends on the fetch failing.** With a reachable API it degrades to a flash;
+   the probe used dummy credentials so B's catalog never arrived. Same qualification as the
+   locale case — *"the catalog fetch failed" is the condition the original defect shipped
+   under.*
+
+Worth separating from the locale case in any writeup: stale-locale is **your own** content
+from a minute ago; cross-project is **another tenant's**. One unlabelled key, materially
+different consequence.
+
+### Correctness versus currency
+
+The React owner's synthesis, kept because it organises items 8 and 9 better than "scope" did.
+Items 1–7 are claims **wrong about their scope**. Items 8 and 9 are claims that were *true when
+made* and then expired:
+
+- **Item 8 — the code moved.** A top-priority roadmap item was already implemented, more
+  broadly, on an unmerged branch.
+- **Item 9 — the facts moved.** A shipped guide was invalidated by its own author's later
+  measurements, and no review catches that, because a document does not change when the facts do.
+
+**These are failures of currency, not correctness**, and they need a different defence:
+verifying a claim harder does not detect either. The checks are *"has someone already done
+this?"* before scheduling work, and *"what did I measure since I wrote this?"* before trusting
+a document you authored.
+
+### Watch item: branch `663` would invalidate a claim here
+
+`refactor/663_unify_cb_dedup_and_fix_id_hash` (and its Svelte counterpart
+`refactor/663_drop_contentBlocks_reexport`) drops the `contentBlocks` re-export.
+`integrate/vanilla-ts.md:181` lists `contentBlocks` among the exports. **Correct today** —
+it is present in published `0.6.5` — and it becomes wrong the day that branch lands. Recorded
+rather than pre-emptively changed: this file documents published artifacts, and editing ahead
+of a merge would make the doc wrong now to be right later. `838` (write-key gating) is the
+other branch that moves a surface documented here.
+
+### Resolved: `experimental.async` — both statements were true, about different shapes
+
+The conflict recorded here on 2026-09-01 is settled. **The `3.6.16` claim was reasoned from
+reading the renderer and SvelteKit's `render.js`; the turn-20 result was measured.** The
+measurement was *not* a false negative from a flag that never took effect — the flag was
+verified on two ways (compiled output opens with `import 'svelte/internal/flags/async'`, and
+the same source fails to compile without it, `code: 'experimental_async'`).
+
+Measured, Svelte 5.55.8, four locales concurrent, module-global seed in a parent body:
+
+| Shape | flag | Wrong-locale |
+|---|---|---|
+| No `await` in the tree | off | 0 / 4 |
+| No `await` in the tree | on | 0 / 4 |
+| `await` in a **parent's** script, read in a **child** | on | 0 / 4 |
+| **`await` then read in the *same* script** | on | **3 / 4** |
+
+**The flag alone is not the trigger — the read landing after the await in the same closure
+is.** With an await in a parent the compiler hoists it into `$$renderer.run([...])` and keeps
+walking children synchronously; row 4 compiles the read into a gated continuation instead.
+The turn-20 harness was row 3: a true result about a shape that cannot bleed.
+
+**What does not survive is the sentence built on it** — *"there is no component-tree
+construction in Svelte that puts an await between seed and read"* is false, and that absolute
+is why a too-weak conclusion survived four upstream releases. This skill had already scoped
+both of its statements to "the default renderer" before the resolution arrived, so neither was
+wrong; the guidance is now the measured table.
+
+**Consequence for the recommendation:** row 4 is how almost anyone writes it — `const data =
+await something;` then read. A layout seeding in its body plus a page that awaits before
+reading *is* row 4. So with this flag on, SvelteKit leaves the "structurally guaranteed"
+category and joins Nuxt's: a safe shape exists and the idiomatic one violates it.
+
+**Pin:** `3.6.17` — the upstream caution is now a measurement table rather than a paragraph
+of reasoning.
+
+### Provenance: a reasoned claim must not be phrased like a measured one
+
+A distinct failure from the coherence class below, and the one this file is most exposed to.
+
+Upstream, a **reasoned** claim and a **measured** claim sat in the same document for four
+releases, *indistinguishable in tone*. The reasoned one silently outranked the measurement
+because it was newer and more confident. Nothing in the prose marked which was which.
+
+**Rule: phrase a claim derived from reading source differently from one derived from running
+something, and when they conflict the reasoned one is the hypothesis, not the tiebreaker.**
+
+This is the same practice adopted from the `langsys-js-typescript` owner — attribution marked
+asymmetrically, so a reader who reproduces and gets a different number knows which half to
+distrust — arriving independently from a second direction. It is now load-bearing for this
+file, which mixes both kinds of claim throughout.
+
+The conflict above was caught only by noticing the two statements **could not both be true**.
+That check — *does this document contradict itself across sources?* — is the one their author
+had not run on their own document before publishing it, and it is cheap.
+
+### The edit that fixes a defect is where the next one lands
+
+Two instances in the Svelte package within days, both reported by its owner:
+
+- `3.6.11` shipped a seeding sample referencing `data.catalog` where the step above returned
+  `translations`.
+- `3.6.15`'s inlined safety block closed with *"Both failures are invisible from a cold
+  process"* directly beneath its own bullet stating that a nullish catalog throws *"a 500
+  during SSR, and the same throw again at hydration."* The invisibility belongs to the
+  **skipped-seed** failure only; generalising it to "both" would lead a reader to conclude
+  the null case needs warm-load testing to find, and to deprioritise the `?? {}` guard the
+  bullet exists to sell.
+
+Their diagnosis: *"every one of these was in prose I had just written and verified against
+source. I checked each claim and never checked the paragraph against itself. The author is
+reading for the thing they came to fix."*
+
+**Rule: a correction pass must be re-read for coherence, not only for the defect that
+prompted it.** Per-claim verification is necessary and demonstrably not sufficient — it does
+not catch two adjacent correct sentences that contradict each other, a fix whose own citations
+are dead, or prose that gets more accurate while the code it describes gets less usable. This
+applies to this file with particular force: it is almost entirely correction prose.
+
+### Upstream outcome
+
+`langsys-js-typescript` scoped both endorsement sites rather than removing them (commit
+`1ecfc60`, comment-only, unpushed at time of writing): the `Translations.markLoaded` JSDoc,
+and — found by that owner, not by us — **`iLangsysInitConfig.initialTranslations`**, which
+read *"Useful for SSR scenarios to avoid duplicate fetches."* Same steer, in the type
+surface integrators actually read rather than in a method comment.
+
+**A practice worth stealing from that fix.** The upstream comment marks its attribution
+*asymmetrically*: the concurrency numbers are recorded as reported and **not re-run there**,
+while the module-global mechanism is marked **verified in that repo**. So a reader who
+reproduces and gets a different number is told which half to distrust. This file should do
+the same — the framework measurements below were run by the React and Vue owners in their
+own repos, and the tarball/export claims above were verified here.
+
+### Methodology note: three metrics that were right about their case and wrong about scope
+
+This thread produced the same error three times, from three different authors, and it is
+worth recording as a class rather than as three incidents.
+
+1. The skill's `curl` advice — true only of the unseeded pattern the skill itself
+   documented, and it steered readers off the one check that would have exposed it.
+2. A first-run React leak table where every leak sourced from `en-US` — which was the base
+   locale with an empty catalog. Re-run with the base locale excluded and all catalogs
+   non-empty: same shape, different winner. The original was a fixture artifact.
+3. The standard load driver reporting **70/80 bleeds** against App Router. The detector
+   classifies "expected `Ciao`, got `Hello`" as a leak sourced from the base locale — but
+   nothing propagated between requests at all. A total module-graph disconnect was being
+   counted as cross-request contamination. The honest figure is 100% at concurrency 1,
+   which is simpler *and* worse.
+
+4. "A total outage looks fine" — true from a cold process, false from a warm one, which is
+   every long-lived server.
+5. "Pages Router architecturally separates fetching from rendering, and Nuxt cannot" — true
+   of the idiom, false of the architecture; Nuxt has the same safe shape and measured 0/80
+   in it.
+6. **The App Router diagnostic trap.** A contamination-shaped harness — *does response A
+   contain response B's content?* — correctly reports **zero** on App Router, because every
+   response is uniformly wrong in the same way and there is nothing to contaminate. The
+   check meant to catch the bug certifies it. The fix is to compare each response against
+   its *expected* content rather than against the other responses.
+
+7. **"Does this document contradict itself?"** — proposed by *this* agent as a check for the
+   Vue package after the same defect was found in Svelte's. It came back clean, and the
+   reason is the problem: that README's exports table and its SSR section do not disagree
+   **because its SSR section never recommends seeding the stores at all.** Svelte's README
+   contradicts itself by having one correct half. Vue's is internally consistent and wrong
+   throughout. Consistency was the wrong property to test for.
+
+In each case the instrument was correct for the situation it was built for and silent about
+having left that situation. Items 4 and 5 came from the same author, who flagged both
+unprompted; items 1–3 span three more, and item 7 was this agent's own suggested check.
+This is not one person's habit.
+
+**Item 8 is a different class, and it is the one this project is least equipped for.**
+Every instance above is a claim that was *right about the thing its author examined and wrong
+about its scope*. On 2026-09-01 the core owner found that their board's top-priority item —
+build locale-scoping for the persisted catalog — was **already implemented** on a branch
+nobody had looked at, by a remote developer, in a broader form than any of us had proposed.
+Not a wrong claim. A correct one, made without checking whether it was still needed.
+
+Their formulation, kept: **the mesh made all of us better at verifying claims and none of us
+at verifying novelty.**
+
+**Rule: before prioritising work, check whether it already exists.** Not only `main` — that
+repo has *six* branches in flight (`838_write_key_gating` and its reland,
+`649_icu_pluralization_and_gender`, `671_framework_wrapper_friendly_api`,
+`663_unify_cb_dedup_and_fix_id_hash`, `fix/md5-utf8-encoding`). Everything this thread
+measured was against published `0.6.5`, which predates all of them. That does not invalidate
+the measurements — published is what users install, and verifying against it is this file's
+whole premise — but a *roadmap* item derived from a published-artifact defect must be checked
+against unmerged work before it is scheduled, or the roadmap prioritises finished work.
+
+**Items 6 and 7 are the same shape, and it is worth naming.** A *differential* check — one
+that looks for disagreement between two things — cannot see a failure that affects both
+things equally. A contamination harness asks whether response A differs from response B, and
+reports zero when every response is uniformly wrong. A self-consistency review asks whether
+section A contradicts section B, and reports clean when both sections are uniformly wrong.
+**Where a defect is systemic, only a check against an external ground truth can see it** —
+compare against what the answer *should* be, not against another instance of the same
+possibly-wrong thing. **A measurement inherits the assumptions of the case it was
+written against, and does not announce when it has outrun them.** Prefer a metric that fails
+loudly outside its scope over one that keeps producing plausible numbers.
+
+**Tested and dismissed:** React StrictMode double-invocation — 80 body invocations for 80
+requests, no server-side double-render in production. Recorded so it is not re-litigated.
+
+**Also verified across all three tarballs:** the bare `t` export is `tSignal as t`, i.e. a
+`Signal<TFunction>`, in `langsys-js-svelte@3.6.10`, `langsys-js-react@0.6.7` and
+`langsys-js-vue@0.2.1` — not a callable. It works in Svelte only because `$t` auto-subscribes.
+The skill's tracks use `useT()` / `$t` and never import a bare `t`, so no guidance is affected.
+
+**Second-order lesson, worth more than the fix.** The follow-up defect was worse than the
+original: an early return on the miss path reads as a harmless no-op but leaves the
+singleton holding the *previous* request's catalog, so a failing locale renders in the
+last visitor's language under its own `hreflang` — confidently mislabelled, which a search
+engine punishes harder than untranslated. **When a store is process-global, not writing is
+a decision, not an abstention.** The same shape as this file's recurring theme: the
+no-signal path reads as the safe path.
+
 ## Consequences for the skill
 
 - **PHP track (task #17) must not open with `composer require`.** It teaches the manual `autoload.php` install until defect A is resolved, and `doctor` checks for the package rather than assuming Composer resolution succeeds.
