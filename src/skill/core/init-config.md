@@ -93,14 +93,42 @@ Pass **both** or neither — translations without their locale cannot be matched
 | Call | Purpose |
 |---|---|
 | `LangsysApp.refresh()` | Force-refetch the current locale's catalog |
-| `LangsysApp.translationsLoadingPromise` | Resolves when the current locale's translations are ready |
+| `LangsysApp.translationsLoadingPromise` | **Settles when a locale change stops being in flight — NOT when translations arrived.** See below |
 | `LangsysApp.t` | Current `TFunction` (getter — reads fresh state each call) |
 
 Switching locale mid-session and need to re-run dependent code:
 
 ```ts
-LangsysApp.translationsLoadingPromise.then(() => { /* new catalog is live */ });
+LangsysApp.translationsLoadingPromise.then(() => {
+    // The change is no longer in flight. It does NOT mean a catalog arrived.
+});
 ```
+
+> ### ⚠ `translationsLoadingPromise` is not a success signal
+>
+> Verified in published `langsys-js-typescript@0.6.5`, `dist/index.js`. It resolves in three
+> situations where nothing was loaded:
+>
+> 1. **Before `init()`.** The constructor sets `this.translationsLoadingPromise =
+>    Promise.resolve()`. Awaiting it at startup returns immediately, having loaded nothing.
+> 2. **If key validation fails.** The assignment lives inside `sUserLocale.subscribe(...)`
+>    behind `if (!validateResponse.status) return;` — so on a failed validate the property
+>    keeps the constructor's already-resolved promise forever.
+> 3. **If the catalog fetch fails.** It is assigned `this.Translations.change(locale, false)`,
+>    and that path returns normally rather than throwing, so a failed fetch resolves too.
+>
+> Its declared type is `Promise<unknown>` with **no JSDoc** — the type surface never claimed
+> a success semantic; this skill inferred one. Treat it as *"the change is no longer in
+> flight"* and nothing more.
+>
+> **A locale mismatch is not a failure test either.** The locale write is deferred behind the
+> promise, so `currentlyLoadedLocale !== requested` immediately after settle is the normal
+> success path mid-flight, not an error. There is no signal in the SDK separating a failed
+> fetch from one that just succeeded — **an error state needs a caller-supplied timeout.**
+>
+> This matters because the fallback is safe: a missing catalog renders the base language,
+> since the phrase *is* the base copy. Do not build a retry or an error modal on this
+> promise; it will fire on success and stay silent on failure.
 
 ---
 

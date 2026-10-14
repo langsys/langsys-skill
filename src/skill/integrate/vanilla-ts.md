@@ -133,7 +133,8 @@ Mark elements with `translate="no"` — the tokenizer and renderer both skip the
 
 ```ts
 userLocale.set('es-ES');                        // all subscribers re-translate
-await LangsysApp.translationsLoadingPromise;    // wait for the new catalog
+await LangsysApp.translationsLoadingPromise;    // change no longer in flight —
+                                                // NOT proof a catalog arrived
 ```
 
 ## The `Signal<T>` primitive
