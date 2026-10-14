@@ -27,7 +27,28 @@ t('Hello, {name}!', 'Greetings', { name });                                   //
 
 **Why it persists:** the SDK cannot detect it. By the time the string arrives, an interpolated value is indistinguishable from an authored one. There is no warning. It is also the natural thing to write in PHP, where until recently there was no `params` argument at all.
 
-**The phrase argument must always be a literal.** If you are building a string before passing it, stop.
+**The rule is about construction, not literalness.** What corrupts the catalog is *building* the
+string at the call site. Passing a whole authored string through is a different thing, and is
+correct:
+
+```ts
+t(`Hello, ${name}!`);              // ❌ unbounded — one new phrase per user, forever
+t(product.description, 'Catalog'); // ✅ bounded — one phrase per product, which is the point
+```
+
+The distinguishing property is **cardinality, not syntax**. A CMS with 400 products registers 400
+phrases; that is exactly the content you wanted translated. `${name}` registers one per visitor.
+The two look alike and mean opposite things — which is why the linters key on template
+substitution, concatenation, `sprintf()` and PHP `"$var"` interpolation, and do **not** flag a
+variable argument.
+
+**Content origin does not matter.** A string from a CMS, a database, a PIM feed, a partner API or
+a third-party widget is translated by the client SDK exactly like copy you typed into the
+component. Origin is not a property the SDK knows about — the app is where all content converges,
+and that is where translation happens. You do not need server-side rendering, a per-source
+integration, or the source system's own localization features to cover it.
+
+If you are building a string before passing it, stop. If you are passing one through, carry on.
 
 ---
 

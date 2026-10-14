@@ -215,7 +215,9 @@ Langsys discovers phrases from your running app. **The source text is the key** 
 \`\`\`
 t(\`Hello, \${name}!\`)                  ❌      t('Hello, {name}!', 'UI', { name })   ✅
 translate(sprintf('Hi, %s', $n))     ❌      translate('Hi, {n}', null, null, null, ['n' => $n])  ✅
+t(article.title, 'Blog')             ✅      passing content through is not building it
 \`\`\`
+The test is **cardinality, not syntax**: per-visitor values pollute, a bounded editorial set is the content you meant to translate. Copy from a CMS, a database or a third-party API needs no special handling — the client SDK treats it exactly like copy in the component.
 
 **2. The phrase is the key.** No \`locales/en.json\`, no dot-keys. \`t('home.welcome')\` registers the literal string "home.welcome".
 

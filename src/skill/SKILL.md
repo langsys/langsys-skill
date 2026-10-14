@@ -74,7 +74,12 @@ Follow [verify.md](./verify.md). It is not done until this passes — including 
 ```ts
 t(`Hello, ${name}!`)                    // ❌ new phrase per user
 t('Hello, {name}!', 'UI', { name })     // ✅
+t(article.title, 'Blog')                // ✅ passing content through is not building it
 ```
+
+The test is **cardinality, not syntax**: unbounded per-visitor values pollute, a bounded editorial
+set is the content you meant to translate. Content from a CMS, an API or a third party needs
+nothing special — see [invariants.md](./core/invariants.md).
 
 **2. The phrase is the key.** No `locales/en.json`, no dot-keys.
 
