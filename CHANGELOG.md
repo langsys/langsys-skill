@@ -11,7 +11,7 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
-## Unreleased
+## 0.2.0 - 2026-10-14
 
 ### Fixed
 - **The SSR rewrite left older text in the same files saying the opposite.** Found in
