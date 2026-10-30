@@ -2158,3 +2158,38 @@ test('lint: a correct-code negative tolerates a WARNING but not an error', () =>
     const alsoWrong = fixture('e', "const x = t('Based on <strong>5</strong> reviews');\n", '.ts');
     assert.match(sgErrors([alsoWrong.file]), /^error\[/m, 'but an error must still come through');
 });
+
+test('the write-answer symptom tree distinguishes unset from the three ways it is false', () => {
+    // Corrected after the TypeScript lane's branch review, and re-measured here
+    // on published core 0.7.0 with the network stubbed: in a browser a refused or
+    // unconfigured init() sets the answer to FALSE, not unset. The first version
+    // of this tree read an unset answer as "init never authorized", which sent a
+    // reader to check an allow-list for a fault that was actually a missing key.
+    //
+    // The load-bearing part is that `false` alone is ambiguous between three
+    // faults, so the tree must name a discriminator rather than a verdict.
+    const txt = readFileSync(join(root, 'src/skill/projects-and-keys.md'), 'utf8');
+
+    assert.match(txt, /isConfigured\(\)/,
+        'the tree must name the discriminator that separates the three false cases');
+    assert.match(txt, /authorization was REFUSED/i,
+        'a refused init must be its own branch, not folded into the server refusing a key');
+    // Tolerant of the tree's gutter: this sentence wraps across two lines with a
+    // `│` and padding between them, so an exact phrase match would be asserting
+    // the line width rather than the claim.
+    assert.match(txt, /only[\s│]*ever set in a browser/i,
+        'and the server case must say the answer is permanently unset there');
+
+    // The unset branch must NOT claim init failed — that was the defect.
+    const unsetBranch = txt.slice(txt.indexOf('UNSET'), txt.indexOf('is FALSE'));
+    assert.match(unsetBranch, /has not been called, or has not finished/,
+        'unset means init has not finished, not that it failed');
+    assert.ok(!/never authorized/i.test(unsetBranch),
+        'unset must not be described as a failed authorization');
+
+    // And the measured table has to be present, since the three-way ambiguity is
+    // the kind of claim that gets "simplified" back out by a later editor.
+    assert.match(txt, /no credentials\s+false\s+false\s+false/,
+        'the measured states must be recorded, not just described');
+    assert.match(txt, /credentials, authorization refused\s+false\s+false\s+true/);
+});

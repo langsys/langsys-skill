@@ -1718,3 +1718,39 @@ written it would not have worked, because ast-grep puts the severity on the head
 the filter ran per line. Same shape as the `sg()` defect it was meant to fix, one layer up: the
 fix was written, described correctly, and never exercised. There is now a test that trips a
 warning-only fixture and asserts it reads as clean, with an error fixture as the paired positive.
+
+## Correction from the TypeScript lane: `false` is not "unanswered"
+
+Reported 2026-10-30, re-measured here on published core 0.7.0 rather than taken on report —
+the same discipline that put this file's §1 rule in place, applied to a correction as well as
+to a claim.
+
+`projects-and-keys.md`'s first symptom tree read an unset write answer as "init never
+authorized". Wrong in a browser: a refused or unconfigured `init()` sets the answer to
+**`false`**. Measured with `fetch` stubbed to throw, under happy-dom:
+
+```
+                                     init.status   writeEnabled   isConfigured()
+no credentials                       false         false          false
+credentials, authorization refused   false         false          true
+no init() yet                        —             undefined      false
+on a server, always                  —             undefined      —
+```
+
+So the observable an agent actually reads was pointing at the wrong fault: `false` was
+described as "the server refused a write key", which sends someone to check an `ip_write`
+allow-list when the real cause is that `init()` never got off the ground.
+
+**`isConfigured()` is the discriminator, and it is better than the one the correction
+proposed.** Checking whether `init()` resolved `status: false` works only if you are holding
+that return value; `isConfigured()` is readable at any later point, which is when someone is
+actually debugging. It separates "no credentials reached `init()`" (`false`) from
+"authorization was refused" (`true`) — the two cases that are otherwise indistinguishable.
+
+Not asserted, because it was not measured: whether `autoDiscovery` is set on a server after a
+**successful** init. Every server-side init reachable here fails at the network, so the
+observation is unavailable without a live API, and the skill says nothing about it rather than
+repeating a plausible claim.
+
+The tree now branches on unset / `false` × three causes / `true`, and a test asserts the
+discriminator is named and that the unset branch does not describe a failed authorization.

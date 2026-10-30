@@ -77,32 +77,64 @@ and a URL carrying a credential-shaped parameter is never reported at all. A ses
 The most common fault on current SDKs, and the one that reading your own code will not
 explain: the key is right, the code is right, and the server said no.
 
+The SDK exposes the server's answer; each core skill names it (`writeEnabled` in JavaScript,
+`canWrite()` in PHP). **Read it together with whether the client is configured** — the answer
+alone does not separate the three ways it can be `false`.
+
 ```
 Phrases are not appearing in the Translation Manager
 │
-├─ Did init succeed?                 check what init returned. A refused authorization
-│                                    is reported there and nowhere else
+├─ The write answer is UNSET (JS: writeEnabled is undefined)
+│  ├─ in a browser ─────────────────▶ init() has not been called, or has not finished.
+│  │                                  Nothing is lost: misses found in this window are
+│  │                                  HELD and settle once the answer arrives
+│  └─ on a server ──────────────────▶ expected, and permanent. The write answer is only
+│                                     ever set in a browser, so never branch on it in
+│                                     server code
 │
-├─ Is the session write-enabled?     the SDK exposes the server's answer; each core skill
-│  │                                 names it (writeEnabled / canWrite())
-│  ├─ never answered  ──────────────▶ init never authorized. Back to the line above
-│  ├─ false, one warning logged ────▶ a write or ip_write key the server refused:
-│  │                                  off an ip_write allow-list, or a grant that is
-│  │                                  not arriving. The warning is logged outside debug
-│  └─ false, no warning ────────────▶ a read key. Expected. Nothing will register;
-│                                     the reported URLs need a write-enabled visit
+├─ The write answer is FALSE — three different faults, and they look identical
+│  ├─ isConfigured() is false ──────▶ no credentials reached init(). t() renders source
+│  │                                  text and sends nothing, by design
+│  ├─ isConfigured() is true AND
+│  │  init() resolved status:false ─▶ authorization was REFUSED. Read init()'s errors;
+│  │                                  that is the only place they appear
+│  └─ init() SUCCEEDED ─────────────▶ the server made this session read-only. Now the
+│     ├─ one warning logged ─────────  key matters: an ip_write key off its allow-list,
+│     │                                or a grant that is not arriving. The warning is
+│     │                                logged outside debug, so look for it in production
+│     └─ no warning ─────────────────  a read key. Expected. Nothing will register, and
+│                                      the recorded URLs need a write-enabled visit
 │
-├─ Is anything visiting write-enabled?  a read-only session only reports. See above
+├─ The write answer is TRUE
+│  ├─ Does the framework need a build step?  Svelte's langsysPreprocess() is the live
+│  │                                  case: without it, blocks render translations and
+│  │                                  register nothing. Ask the framework's own skill
+│  └─ otherwise ────────────────────▶ not a capability problem. Go to verify.md and
+│                                     inspect the registered phrase set
 │
-├─ Does the framework need a build step?  Svelte's langsysPreprocess() is the live case:
-│                                     without it, blocks render translations and register
-│                                     nothing. Ask the framework's own skill
-│
-└─ All of the above fine? ──────────▶ not a capability problem. Go to verify.md and
-                                      inspect the registered phrase set
+└─ Is anything visiting write-enabled at all?  a read-only session only reports, and a
+                                      recorded URL registers nothing by itself
 ```
 
 Order matters: every row below a failing row will look broken for the row above's reason.
+
+> **`false` is not the same as "unanswered", and a refused `init()` gives you `false`.** In a
+> browser, `init()` without credentials and `init()` whose authorization failed **both** set
+> the answer to `false` — not to unset. Measured on published core 0.7.0 with the network
+> stubbed to fail:
+>
+> ```
+>                                      init.status   writeEnabled   isConfigured()
+> no credentials                       false         false          false
+> credentials, authorization refused   false         false          true
+> no init() yet                        —             undefined      false
+> on a server, always                  —             undefined      —
+> ```
+>
+> So `false` on its own tells you nothing about *which* fault you have, and reading it as "the
+> server refused my write key" sends you to check an allow-list when the real answer is that
+> `init()` never got off the ground. `isConfigured()` is the discriminator, and unlike `init()`'s
+> return value it is still readable later, after the moment of failure has passed.
 
 ---
 

@@ -129,6 +129,18 @@ test that fails without the fix.
   assertion in between left it in the working tree, so every later contract run reported a
   violation unrelated to the code. It is now a temp directory removed in a `finally`.
 
+### Fixed after the TypeScript lane's review
+
+- **The "nothing is registering" symptom tree pointed at the wrong fault.** It read an unset
+  write answer as "init never authorized", but in a browser a refused or unconfigured `init()`
+  sets the answer to **false**, not unset — re-measured here on published core 0.7.0 with the
+  network stubbed. So `false`, which the tree described as the server refusing a write key, is
+  ambiguous between three faults, and a reader was sent to check an `ip_write` allow-list for
+  what was actually a missing credential. The tree now branches on unset / false × three causes
+  / true, with `isConfigured()` as the discriminator: it separates "no credentials reached
+  `init()`" from "authorization was refused", and unlike `init()`'s return value it is still
+  readable after the moment of failure.
+
 ### Changed
 
 - `doctor` reports which core each binding resolved to, and whether each installed skill
