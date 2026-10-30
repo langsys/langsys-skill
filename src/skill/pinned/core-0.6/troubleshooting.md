@@ -188,7 +188,7 @@ Fix the call site, then delete the junk entries. If this ran in production with 
 
 ## Flash of untranslated content on load
 
-SSR without seeding. Pass **both** `initialTranslations` and `initialTranslationsLocale` — either alone does nothing. See the [ssr/](../) tracks.
+SSR without seeding. Pass **both** `initialTranslations` and `initialTranslationsLocale` — either alone does nothing. See the [Next.js](../ssr-nextjs.md) and [Nuxt](../ssr-nuxt.md) SSR tracks.
 
 ## Two catalog requests per page load
 

@@ -1754,3 +1754,34 @@ repeating a plausible claim.
 
 The tree now branches on unset / `false` × three causes / `true`, and a test asserts the
 discriminator is named and that the unset branch does not describe a failed authorization.
+
+## Correction from Docs: a link that names a directory resolves only on disk
+
+Reported 2026-10-30 by Docs' mirror link check, run against the published 0.2.0.
+
+Seven links in the payload pointed at a directory. Three came from 0.2.0 (`core/init-config.md`,
+`core/invariants.md` and `troubleshooting.md`, all linking `../ssr/`); the restructure carried
+them forward as `../`, and added four more of its own pointing at `./pinned/`, `./core-0.6/`
+and `./migrate/`.
+
+**Why it survived every check here.** On a filesystem a directory link is a valid target — an
+agent reading `.langsys/skill/` can list it and find its way. Docs serves the same tree over
+HTTP, where there is nothing to list. So the defect is invisible in the environment the payload
+is developed and tested in, and present in the one most readers use. That is this file's
+recurring shape: the measurement that cannot see the defect.
+
+**And the test was structurally incapable of catching it.** The pattern was
+`/\]\((\.[^)#]+\.md)(#[^)]*)?\)/` — the `.md` suffix is required, so a link ending in `/` never
+entered the loop. The check reported "every internal markdown link resolves" over a set that
+excluded every link that did not. A passing assertion over a filtered population is the same
+failure as a helper that cannot observe the state it asserts, recorded earlier in this file; the
+filter here was in the pattern rather than in the code around it, which is harder to see.
+
+The check now matches any relative target and asserts it is a **file**, verified by
+reintroducing `./pinned/` and watching it fail.
+
+**Severity is split by ownership, not by how bad the link is.** A directory link *into* this
+payload from an SDK skill is reported and does not fail: it lives in another repo's published
+package, which cannot be edited, and Docs generates a per-directory index so it resolves. A
+directory link *inside* this payload fails the suite, because it is ours to fix. A missing path
+is a violation in both directions.

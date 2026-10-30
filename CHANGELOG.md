@@ -141,6 +141,23 @@ test that fails without the fix.
   `init()`" from "authorization was refused", and unlike `init()`'s return value it is still
   readable after the moment of failure.
 
+### Fixed after Docs' mirror link check
+
+- **Seven links pointed at a directory rather than a page.** On disk an agent can list a
+  directory, so the defect is invisible where this payload is developed; served over HTTP by
+  Docs, the link dead-ends. Three were inherited from 0.2.0's `../ssr/` links and three more
+  were introduced by this release's restructure, which rewrote them to `../`. Every one now
+  names the page it means.
+- **The link test could not see them.** Its pattern required a `.md` suffix, so a link to a
+  directory was structurally unmatchable — the check reported "all links resolve" while seven
+  did not resolve for any reader on the web. It now matches any relative target and asserts the
+  target is a file.
+- **`skill-contract` treated a directory as resolved too**, and now distinguishes the two by
+  **ownership rather than severity**: a directory link from an SDK skill is reported, because it
+  lives in a published package that cannot be edited and Docs generates a per-directory index
+  so it does resolve; a directory link inside this payload fails the suite, because that one is
+  ours to fix. A genuinely missing path is still a violation either way.
+
 ### Changed
 
 - `doctor` reports which core each binding resolved to, and whether each installed skill

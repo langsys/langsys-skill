@@ -218,7 +218,7 @@ framework reconciliation.
 
 ## 7. Seed translations during SSR
 
-If the app server-renders, pre-fetch on the server and pass `initialTranslations` + `initialTranslationsLocale`. Without them you get a duplicate fetch on hydration and a flash of untranslated content. See the [ssr/](../) tracks.
+If the app server-renders, pre-fetch on the server and pass `initialTranslations` + `initialTranslationsLocale`. Without them you get a duplicate fetch on hydration and a flash of untranslated content. See the [Next.js](../ssr-nextjs.md) and [Nuxt](../ssr-nuxt.md) SSR tracks.
 
 ---
 

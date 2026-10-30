@@ -111,7 +111,7 @@ stale state exists at all, and why re-running the installer is the fix.
 Not every SDK has had a release carrying one yet. Two cases, and only one of them is safe:
 
 - **The installed version is inside a pinned guide's range** — use that guide, in
-  [pinned/](./pinned/). Each one names the single published version it was verified against.
+  [pinned/README.md](./pinned/README.md). Each one names the single published version it was verified against.
 - **It is outside that range** — **read that package's own README instead**, and tell the user
   which you used and why. Do not use a guide verified against a different version. A guide
   that is one minor behind looks authoritative and is wrong in exactly the places that fail

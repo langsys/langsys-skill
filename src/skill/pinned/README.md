@@ -16,8 +16,8 @@ a known artifact.
 | [ssr-nuxt.md](./ssr-nuxt.md) | same as vue.md |
 | [js-server.md](./js-server.md) | `langsys-js-server@0.1.0` |
 | [laravel.md](./laravel.md) | `langsys/langsys-php-laravel@1.0.0` → PHP SDK 1.3.x |
-| [core-0.6/](./core-0.6/) | base SDK `langsys-js-typescript@0.6.5` |
-| [migrate/](./migrate/) | the codemod route, for core 0.6.x only |
+| [core-0.6/invariants.md](./core-0.6/invariants.md) | base SDK `langsys-js-typescript@0.6.5` |
+| [migrate/_method.md](./migrate/_method.md) | the codemod route, for core 0.6.x only |
 
 ## How to use this folder
 

@@ -13,7 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -1697,9 +1697,22 @@ test('skill: every internal markdown link resolves IN THE INSTALLED LAYOUT', () 
 
     let checked = 0;
     for (const f of walk(join(proj, '.langsys/skill'))) {
-        for (const m of readFileSync(f, 'utf8').matchAll(/\]\((\.[^)#]+\.md)(#[^)]*)?\)/g)) {
-            assert.ok(existsSync(resolve(dirname(f), m[1])),
-                `${f.slice(proj.length)} links to ${m[1]}, which does not exist once installed`);
+        // Any relative target, not just ones ending `.md`.
+        //
+        // The previous pattern required the `.md` suffix, so it was structurally
+        // incapable of seeing a link to a DIRECTORY — and seven of those existed,
+        // three of them written by the restructure. Docs serves this payload over
+        // HTTP, where a directory link dead-ends; on disk an agent can list the
+        // directory, so the defect is invisible exactly where this test runs.
+        // Hence both halves below: exists, AND is a file.
+        for (const m of readFileSync(f, 'utf8').matchAll(/\]\((\.[^)#\s]+)(#[^)]*)?\)/g)) {
+            const target = resolve(dirname(f), m[1]);
+            const where = f.slice(proj.length);
+            assert.ok(existsSync(target),
+                `${where} links to ${m[1]}, which does not exist once installed`);
+            assert.ok(statSync(target).isFile(),
+                `${where} links to ${m[1]}, which is a DIRECTORY. On disk an agent can list it; `
+                + `over HTTP the link dead-ends. Name the page it means.`);
             checked++;
         }
     }
@@ -2192,4 +2205,44 @@ test('the write-answer symptom tree distinguishes unset from the three ways it i
     assert.match(txt, /no credentials\s+false\s+false\s+false/,
         'the measured states must be recorded, not just described');
     assert.match(txt, /credentials, authorization refused\s+false\s+false\s+true/);
+});
+
+test('tree: a directory link from an SDK skill is reported, not failed', () => {
+    // Severity by ownership. An inbound link lives in another repo's published
+    // package and cannot be edited, and Docs generates a per-directory index, so
+    // the link resolves — failing this repo's check on it would block their
+    // release for a style preference. A directory link in OUR payload is a hard
+    // failure in the installed-layout test, because that one is ours to fix.
+    const sdk = mkdtempSync(join(tmpdir(), 'langsys-dirlink-'));
+    try {
+        const canonical = readFileSync(join(root, 'src/skill/preamble.md'), 'utf8')
+            .match(/<!-- langsys-skill-preamble:start -->[\s\S]*?<!-- langsys-skill-preamble:end -->/)[0];
+        writeFileSync(join(sdk, 'SKILL.md'),
+            `---\nname: langsys-fixture\n---\n\n${canonical}\n\n`
+            + 'See https://docs.langsys.dev/skill/langsys/pinned/ for the pinned guides.\n');
+
+        let out = '', code = 0;
+        try {
+            out = execFileSync('node', [join(root, 'src/bin/skill-contract.mjs'), `--source=${sdk}`],
+                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (e) { out = (e.stdout ?? '') + (e.stderr ?? ''); code = e.status; }
+
+        assert.equal(code, 0, 'a directory link must not fail another repo\'s release');
+        assert.match(out, /a DIRECTORY/, 'but it must be reported');
+        assert.match(out, /should name its page/, 'with what to do about it');
+
+        // CONTROL: a genuinely missing path must still be a violation, or the
+        // above would be indistinguishable from the check not running.
+        writeFileSync(join(sdk, 'SKILL.md'),
+            `---\nname: langsys-fixture\n---\n\n${canonical}\n\n`
+            + 'See https://docs.langsys.dev/skill/langsys/not-a-real-page.md\n');
+        let code2 = 0;
+        try {
+            execFileSync('node', [join(root, 'src/bin/skill-contract.mjs'), `--source=${sdk}`],
+                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (e) { code2 = e.status; }
+        assert.equal(code2, 1, 'a missing path must still be a violation');
+    } finally {
+        rmSync(sdk, { recursive: true, force: true });
+    }
 });

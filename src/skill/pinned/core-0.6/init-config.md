@@ -88,7 +88,7 @@ await LangsysApp.init({
 });
 ```
 
-Pass **both** or neither — translations without their locale cannot be matched to a request. See the [ssr/](../) tracks.
+Pass **both** or neither — translations without their locale cannot be matched to a request. See the [Next.js](../ssr-nextjs.md) and [Nuxt](../ssr-nuxt.md) SSR tracks.
 
 ---
 

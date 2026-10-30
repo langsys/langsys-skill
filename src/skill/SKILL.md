@@ -29,7 +29,7 @@ steps 1 and 2.
 
 If a step-2 or step-3 skill is not among your skills, that package has not had a release
 carrying one yet — [sdk-versions.md](./sdk-versions.md) says what to read instead, and
-[pinned/](./pinned/) holds the guides for the packages that still need them. Do not substitute
+[pinned/README.md](./pinned/README.md) holds the guides for the packages that still need them. Do not substitute
 a different version's skill; that is the one move guaranteed to be wrong.
 
 ## Start here

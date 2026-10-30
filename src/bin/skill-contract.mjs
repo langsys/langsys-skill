@@ -71,13 +71,27 @@ export function docsLinkPaths(text) {
     return out;
 }
 
-/** Does a payload-relative path name something Docs would serve? */
-function payloadHas(p) {
+/**
+ * What a payload-relative path from an SDK skill actually resolves to.
+ *
+ * `'file'` is the good case. `'dir'` is served — Docs generates an index per
+ * directory — but a link should name its page, so it is reported rather than
+ * failed. `'missing'` is a violation.
+ *
+ * The distinction is about OWNERSHIP, not severity. An inbound link lives in
+ * another repo's published package, which cannot be edited, so failing this
+ * repo's check on a style preference would block their release for something
+ * Docs already backstops. A directory link inside OUR OWN payload is a hard
+ * failure in the suite, because it is ours to fix.
+ *
+ * The payload root is a file case, not a directory one: `.../skill/langsys/` is
+ * the entry skill's canonical URL and resolves to its SKILL.md.
+ */
+function payloadResolves(p) {
     const abs = join(PAYLOAD, p);
-    if (!abs.startsWith(PAYLOAD)) return false;          // no escaping the payload
-    if (existsSync(abs)) return true;
-    // A bare directory link is served by its own entry document.
-    return existsSync(join(abs, 'SKILL.md'));
+    if (!abs.startsWith(PAYLOAD)) return 'missing';      // no escaping the payload
+    if (existsSync(abs)) return statSync(abs).isFile() ? 'file' : 'dir';
+    return 'missing';
 }
 
 /** Every file under a directory, recursively. */
@@ -189,8 +203,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
             try { text = readFileSync(f, 'utf8'); } catch { continue; }
             for (const p of docsLinkPaths(text)) {
                 links++;
-                if (!payloadHas(p)) {
+                const kind = payloadResolves(p);
+                if (kind === 'missing') {
                     violations.push(`${s.label}: ${relative(s.dir, f)} links to ${DOCS_PREFIX}${p}, which does not exist in src/skill/. Keep that path, or get the link changed before it is published.`);
+                } else if (kind === 'dir') {
+                    notes.push(`${s.label}: ${relative(s.dir, f)} links to ${DOCS_PREFIX}${p}, a DIRECTORY. Docs generates an index for it, so it resolves — but a link should name its page. Worth raising with that lane.`);
                 }
             }
         }
