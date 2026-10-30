@@ -1,5 +1,9 @@
 # Choosing the right primitive
 
+> **Pinned guide.** Base SDK `langsys-js-typescript@0.6.5` — the core the React and Vue bindings install. **Not** core 0.7; for that read the `langsys-typescript` skill.
+> A project on another version reads that package's own README instead —
+> [why](../README.md).
+
 **Read this before writing any Langsys code.** Picking the wrong primitive is the most common Langsys integration error, and the failures are silent in the base language.
 
 Langsys has three ways to mark content for translation. They answer different questions.

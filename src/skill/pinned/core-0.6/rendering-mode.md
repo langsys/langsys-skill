@@ -1,5 +1,9 @@
 # Rendering mode: the decision before the SSR track
 
+> **Pinned guide.** Base SDK `langsys-js-typescript@0.6.5` — the core the React and Vue bindings install. **Not** core 0.7; for that read the `langsys-typescript` skill.
+> A project on another version reads that package's own README instead —
+> [why](../README.md).
+
 **Read this before any `ssr/` document.** It carries a fact about the JS SDKs that changes what SSR is *for*, and getting it wrong sends you down a track chasing something the SDK does not do.
 
 ## The fact that governs everything below
@@ -45,7 +49,7 @@ framework SDKs.
 > genuinely is shared mutable state — but the render is synchronous, which closes the
 > window, and the conditions for keeping it closed are stateable (see below). The error was
 > found in production: seven sites served **byte-identical** HTML on every localized route,
-> and Google folded them into one cluster. See [VERIFIED.md](../../VERIFIED.md).
+> and Google folded them into one cluster. See [VERIFIED.md](../../../VERIFIED.md).
 
 ### The four conditions that keep seeding safe
 
@@ -128,7 +132,7 @@ violate it, and in whether you can guarantee you have not.
 
 - **SvelteKit** — recommended, and in the **default renderer** the condition is structurally
   guaranteed rather than merely satisfiable. Two ways to lose it, both in
-  [ssr/sveltekit.md](../ssr/sveltekit.md): seeding outside the render pass (`hooks.server.js`),
+  the `langsys-svelte` skill: seeding outside the render pass (`hooks.server.js`),
   and turning on `compilerOptions.experimental.async`.
 - **Nuxt** — a safe position exists (seed in a Nitro `request` hook, reads in `app.vue`
   setup before any await), measured on Nuxt 3.21.11 and 4.6.1. It relies on Nitro's
@@ -141,8 +145,8 @@ violate it, and in whether you can guarantee you have not.
 - **Next App Router** — a different failure entirely; see below.
 
 Those needing request scoping want `langsys-js-server`, `AsyncLocalStorage`, or the pure
-catalog function — not a relocated seed. See [ssr/nextjs.md](../ssr/nextjs.md) and
-[ssr/nuxt.md](../ssr/nuxt.md).
+catalog function — not a relocated seed. See [ssr/nextjs.md](../ssr-nextjs.md) and
+[ssr/nuxt.md](../ssr-nuxt.md).
 
 > **It converges — it does not scatter.** Every suspended request resumes after the others
 > have seeded, so they all read the *same* last writer. The result is a near-uniform wrong
@@ -190,7 +194,7 @@ Reach for the markup-bearing components only when a run genuinely contains inlin
 > with no rewrite. On **React App Router and Nuxt, this helper ranks FIRST** — seeding doesn't
 > work on App Router and isn't recommended on Nuxt, and a pure function is immune to both failure modes by construction: it
 > holds no module state, so there is no singleton to leak across requests and none to land
-> in the wrong module graph. Prefer **[`langsys-js-server`](./server-sdk.md)** over this helper if you want
+> in the wrong module graph. Prefer **[`langsys-js-server`](../js-server.md)** over this helper if you want
 > request scoping as a structural property rather than as four conditions you must not
 > violate, plus harvesting for server-only phrases.
 >
@@ -208,7 +212,7 @@ Reach for the markup-bearing components only when a run genuinely contains inlin
 > **Superseded by `langsys-js-server`.** The hand-rolled helper below covers plain strings only —
 > no `<Phrase>`, no `<Translate>` — so indexed copy containing an `<em>` or an inflected count is
 > still base language. It also does not harvest, so the strings it renders never reach the
-> catalog. **Prefer [server-sdk.md](./server-sdk.md).**
+> catalog. **Prefer [server-sdk.md](../js-server.md).**
 >
 > Keep reading only if you cannot add a dependency. Migrating off it is a delete-and-reimport —
 > `t()` is signature-compatible — with **one behavioural surprise**: the helper does not harvest
@@ -345,6 +349,6 @@ The gate is what prevents that flash: render the loader, not the stale locale, u
 2. Public → SSR. On SvelteKit, seed the store in the layout body so `t()` server-renders. On the React and Vue tracks (Next Pages or App Router, Nuxt, Remix), don't seed; resolve crawler-visible strings through the pure catalog function or `langsys-js-server`. Either way, resolve head tags from the catalog directly.
 3. App → skip `ssr/` entirely. Gate on `ready` and move on.
 4. Static-only constraint → prerender per locale; indexed head copy is as fresh as the last build.
-5. **Which check works depends on whether server HTML is meant to be translated.** If it is (seeded SvelteKit, the pure function, `langsys-js-server`), `curl` is the check that matters: run `ssr-i18n-check`. If it isn't (client-only), `curl` shows base language whether the app works or not, so open a browser. See [verify.md](../verify.md).
+5. **Which check works depends on whether server HTML is meant to be translated.** If it is (seeded SvelteKit, the pure function, `langsys-js-server`), `curl` is the check that matters: run `ssr-i18n-check`. If it isn't (client-only), `curl` shows base language whether the app works or not, so open a browser. See [verify.md](./verify.md).
 
 `scan` reports the deployment posture it detects, including whether the site is prerendered. It cannot tell you whether crawlers matter for your product. That part is yours.

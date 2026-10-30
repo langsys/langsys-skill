@@ -1,8 +1,12 @@
 # Vue integration
 
-`langsys-js-vue@0.1.1` · requires **Vue 3.4+**.
+> **Pinned guide.** Verified against `langsys-js-vue@0.2.1`, which installs base SDK core **0.6.5**.
+> A project on another version reads that package's own README instead —
+> [why](./README.md).
 
-Covers Vue 3, Nuxt, and Vite SPAs. Server-rendering? Also read [ssr/nuxt.md](../ssr/nuxt.md).
+`langsys-js-vue@0.2.1` · requires **Vue 3.4+**.
+
+Covers Vue 3, Nuxt, and Vite SPAs. Server-rendering? Also read [ssr/nuxt.md](./ssr-nuxt.md).
 
 > **Two published README instructions are wrong.** Both are corrected below — do not copy from the 0.1.1 README for `apiUrl` or `detectPreferredLocale`.
 
@@ -103,7 +107,7 @@ Note `{name}` inside the `t()` string stays single-brace — Vue only consumes `
 
 ## 5. Markup — pick the right component
 
-Full decision procedure: [core/choosing-primitives.md](../core/choosing-primitives.md).
+Full decision procedure: [core/choosing-primitives.md](./core-0.6/choosing-primitives.md).
 
 ### `<Phrase>` — one sentence containing inline markup
 
@@ -209,4 +213,4 @@ const locale = detected && supported.includes(detected) ? detected : 'en-US';
 - [ ] `<Phrase>` for markup-bearing sentences
 - [ ] Read-only key + `debug: false` in production
 
-Then [verify.md](../verify.md).
+Then [verify.md](./core-0.6/verify.md).

@@ -11,6 +11,134 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## 0.3.0 - 2026-10-30
+
+The skill becomes a tree that mirrors the SDKs. Each SDK ships its own skill, written by the
+lane that writes the code and released with it; this package is the **entry skill** — what is
+true in every language — and the **installer** for the rest.
+
+### Upgrading from 0.2.0
+
+- **Re-run `npx langsys-skill install`.** It now also copies the skill of every Langsys package
+  the project has installed, into `.langsys/skills/<name>/` and your agent's skill folder.
+- **The guides for TypeScript, Svelte and PHP are gone from this package.** They ship inside
+  `langsys-js-typescript`, `langsys-js-svelte` and `langsys/langsys-php`. Until each release
+  lands, those SDKs' own READMEs are the answer, and the skill says so rather than offering a
+  guide for a version you do not have: 0.2.0's described TypeScript 0.4.3–0.6.5, Svelte 3.6.x
+  and PHP 1.x, against current releases of 0.7.0, 4.0.0 and 2.0.0.
+- **React, Vue, Laravel and the JS server SDK keep their guides here**, under `pinned/`, each
+  naming the one published version it was verified against. Outside that version you are routed
+  to the package's README.
+- **`src/skill/` is restructured.** Anything linking into the payload by path needs updating;
+  `src/skill/projects-and-keys.md` is a stable entry point that SDK skills link to.
+
+### Added
+
+- **`sdk-versions.md`**, and it is the file to read before installing anything. Which core a
+  binding resolves to decides which rules apply, and a binding's own version does not say:
+  measured, `langsys-js-react@0.6.7` and `langsys-js-vue@0.2.1` resolve core **0.6.5**, because
+  `^0.6.5` pins the minor on a 0.x version. Adding the core yourself to reach a 0.7 feature
+  gives the app **two cores** — two module instances, two catalogs, two registration queues,
+  nothing erroring. The skill states that as a prohibition, and `doctor` reports it as an error.
+- **`projects-and-keys.md`** carries write capability as a cross-language concept: the server's
+  per-session decision, an answer without it being read-only, `ip_write` gated by its
+  allow-list, per-user write grants, and a symptom tree for "nothing is registering". A
+  read-only session's report is **recorded**, not registered — content reaches the catalog only
+  when a write-enabled session renders the page.
+- **`two-languages.md`** for a project rendering through two SDKs: the id and tokenizing rules
+  both follow, both marker families, deciding which side owns which content, and
+  `data-ls-resolved` so a browser SDK does not re-register a server-translated page. The hash
+  agreement is checkable in two commands rather than asserted.
+- **`preamble.md`**, the source of truth for the shared opening every core and child skill
+  carries, and **`skill-contract.mjs`**, which checks every SDK skill's copy against it and
+  verifies that each `docs.langsys.dev/skill/langsys/<path>` link an SDK skill carries still
+  resolves here. A published SDK skill cannot be edited, so a rename here is caught before it
+  ships.
+- **`.langsys/skills.json`**, recording each copied skill's package, declared version, installed
+  version and per-file hashes — so `doctor` can tell a **stale** copy from an **edited** one and
+  warn before a re-install discards someone's edits.
+- **`tools.md`**, **`choosing-sdks.md`** and a shared **`verify.md`** whose acceptance criteria
+  are language-independent.
+
+### Fixed
+
+- **The drift guard reported a false regression on the most load-bearing claim in the skill.**
+  0.7.0's build moved `TFunction` into a content-hashed chunk re-exported from
+  `dist/index.d.ts`, and the guard read only the entry file — so it reported the `t()` signature
+  as changed when it was byte-identical, and would have done so again on every rebuild. It now
+  resolves the type surface by following re-exports and never names a file.
+- **`apiUrl` is a real `init()` field as of core 0.7.0**, and preferred over
+  `LangsysAppAPI.setBaseUrl()`, which must run before `init()` and leaves the SDK permanently
+  inert if it runs after. The `no-init-apiurl` rule is now a **warning** naming the version
+  boundary it cannot see, rather than an error: the same line is correct on 0.7 and silently
+  dropped on 0.6.x, so an error would fire on correct code in half the fleet. As a warning over
+  the published examples it immediately found `init({ apiUrl })` in Vue's own Nuxt example,
+  where the field is dropped and that example talks to production.
+- **The markup rule inverts under Svelte 4's build transform.** `langsysPreprocess()` reads
+  `{expression}` in `<Translate>`/`<Phrase>` from the source, so braces there are correct where
+  it is configured. `markup-check.mjs` now detects it and downgrades to a warning naming the
+  ambiguity, without guessing which files a config's transform covers.
+- **The installer always reported the payload as unchanged**, because it compared the landed
+  file against the content it had just written it from. A first install into an empty directory
+  read as a no-op.
+- **A test helper could not observe warning-severity lint findings at all** — it returned
+  nothing whenever ast-grep exited 0, which it does for warnings. Harmless while every rule was
+  an error; a silent hole the moment one was not.
+
+### Fixed in branch review
+
+A read-only review of the branch found nine defects in the new machinery. Each is fixed with a
+test that fails without the fix.
+
+- **`doctor` could not find the manifest a `--global` install wrote.** It read only
+  `<project>/.langsys/skills.json`, while `install --global` writes under the home directory —
+  and the installer's own closing line runs `doctor` with no argument, so the documented happy
+  path reported "no skill has been installed" and advised re-running the install that had just
+  succeeded. It now checks both, project first, and resolves each copy through the path the
+  manifest recorded.
+- **Uninstalling an SDK left its skill copied on disk.** Nothing pruned it, and `doctor`'s
+  orphan check walks the manifest — which no longer listed it — so the stale copy was
+  simultaneously readable by the agent and invisible to the tool, the exact inverse of the
+  "a copy goes stale visibly" guarantee the copy-not-link design rests on. The installer now
+  removes copies it previously recorded and says which, and only those: the manifest is the
+  record of what it wrote, so it is the only safe licence to delete.
+- **Two `PINNED` entries were never read.** `langsys-js-server` and the Laravel package were
+  checked inside a loop over four hardcoded npm binding names, so the two packages whose guides
+  claim an exact version got no check at all. Laravel's resolved version is read from
+  `composer.lock`, which is where it actually lives.
+- **A package with no pinned guide produced no output at all.** Silence is the state every check
+  in `doctor` exists to prevent, and the one that looks most like a pass. It now says where
+  guidance comes from instead.
+- **Non-markdown files in an SDK's `skill/` were corrupted on copy.** They were read as UTF-8
+  while the manifest hashed raw bytes, so any asset would have been reported as **edited**
+  forever, on a copy nobody touched, with a re-install that could not fix it. Copies are now
+  byte-for-byte.
+- **`skill-contract --json` exited 0 when it found nothing to check.** The exit-2 decision lived
+  inside the human-readable branch, so automation reading the JSON form got precisely the
+  green-run-that-verified-nothing the check exists to prevent.
+- **`skill-contract` gained `--source=<dir>`**, which checks exactly the directories named. An
+  SDK's release gate needs to ask whether *its* skill satisfies the entry skill without the
+  answer depending on what else is checked out; this repo's suite needs the same isolation so a
+  drift in another repo cannot turn these tests red.
+- **The drift guard's re-export walk matched single quotes only.** Which quote a bundler emits
+  is a formatting setting, so a config change would have collapsed the type surface back to one
+  file and resurrected the false "t() signature changed" alarm this walk was added to kill.
+  `typeSurface` is now exported and unit-tested, as that file already argued for its other
+  helper.
+- **A test fixture was created inside the repo and removed only on the last line.** Any failing
+  assertion in between left it in the working tree, so every later contract run reported a
+  violation unrelated to the code. It is now a temp directory removed in a `finally`.
+
+### Changed
+
+- `doctor` reports which core each binding resolved to, and whether each installed skill
+  matches its package (`match` / `stale` / `edited`).
+- Pinned guides are verified against an exact published version, not a floor. `doctor` routes
+  you to the package's README outside it.
+- Findings in sibling SDK examples are baselined in the suite rather than failing it. They are
+  defects in repos this one does not own and cannot fix, and a permanently red suite stops being
+  read — but anything new fails, and each known entry records where it was reported.
+
 ## 0.2.0 - 2026-10-14
 
 ### Fixed

@@ -22,7 +22,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
 import { selfDescribesUnreleased } from './lib/changelog-heading.mjs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 
 /**
@@ -63,6 +63,53 @@ export function bracePlaceholderHits(surfaces) {
         });
     }
     return out;
+}
+
+/**
+ * The package's type surface, as one string: `dist/index.d.ts` plus every
+ * `.d.ts` it re-exports from.
+ *
+ * A claim about a declared type must not be checked against ONE FILE.
+ * `langsys-js-typescript@0.7.0` moved `TFunction` out of `dist/index.d.ts`
+ * into a content-hashed chunk (`dist/pure-DkFXdgVa.d.ts`) re-exported from
+ * it. The signature was byte-identical, but a check that read only the entry
+ * file could not see it and reported "t() signature changed in 0.7.0" — a
+ * red run naming the most load-bearing claim in the skill, caused entirely
+ * by a bundler's file layout.
+ *
+ * That failure mode is worse than the one it imitates: a false alarm on the
+ * claim everything else rests on trains a reader to disbelieve the guard,
+ * and the hash in the filename means it recurs on every rebuild. So the
+ * surface is "the types this package declares", gathered by following the
+ * re-exports, and never a named file. Reading every `.d.ts` in `dist/` would
+ * also work today and would quietly start checking types the package does
+ * not export the moment one is added.
+ */
+export function typeSurface(pkgDir) {
+    const entry = join(pkgDir, 'dist/index.d.ts');
+    if (!existsSync(entry)) return '';
+    const seen = new Set();
+    const parts = [];
+    const visit = (file) => {
+        if (seen.has(file) || !existsSync(file)) return;
+        seen.add(file);
+        const text = readFileSync(file, 'utf8');
+        parts.push(text);
+        // `from './pure-DkFXdgVa.js'` in a .d.ts means the sibling .d.ts.
+        //
+        // Both quote styles. Which one a bundler emits is a formatting
+        // setting, not an API fact — and if a config change flipped it, this
+        // walk would silently collapse to `dist/index.d.ts` alone and
+        // resurrect the very false "t() signature changed" alarm the
+        // function was added to kill. Keying on a quote character would make
+        // that a one-line config change away.
+        for (const m of text.matchAll(/from\s+['"](\.[^'"]+)['"]/g)) {
+            const base = join(dirname(file), m[1]).replace(/\.(d\.)?[cm]?[jt]s$/, '');
+            for (const ext of ['.d.ts', '.d.mts']) visit(base + ext);
+        }
+    };
+    visit(entry);
+    return parts.join('\n');
 }
 
 // ── Executable body ─────────────────────────────────────────────────────────
@@ -147,7 +194,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     {
         const p = pkgs['langsys-js-typescript'];
         if (p) {
-            const dts = readFileSync(join(p.dir, 'dist/index.d.ts'), 'utf8');
+            const dts = typeSurface(p.dir);
             if (!/\(phrase: P, \.\.\.args|\(phrase: P, category: string/.test(dts)) {
                 regressions.push(`t() signature changed in ${p.version} — VERIFIED.md claim 1 and every track assume t(phrase, category?, params?)`);
             }
@@ -159,9 +206,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     {
         const p = pkgs['langsys-js-typescript'];
         if (p) {
-            const dts = readFileSync(join(p.dir, 'dist/index.d.ts'), 'utf8');
-            if (/apiUrl/.test(dts)) {
-                resolutions.push(`apiUrl now EXISTS in langsys-js-typescript@${p.version} — update core/init-config.md, integrate/vue.md, and the no-init-apiurl lint rule`);
+            const dts = typeSurface(p.dir);
+            // RESOLVED as of 0.7.0: `apiUrl` is a real init() field, and the
+            // preferred way to point at another host. The pinned React/Vue
+            // guides still correctly say it does NOT exist, because those
+            // bindings install core 0.6.5 — so this is a boundary to keep, not
+            // a correction to apply everywhere. What would be a regression now
+            // is the field DISAPPEARING, or the core 0.6.x half going missing.
+            if (!/apiUrl/.test(dts)) {
+                regressions.push(`apiUrl is absent from langsys-js-typescript@${p.version} — it was an init() field in 0.7.0, and the core>=0.7 guidance assumes it`);
             }
         }
     }
@@ -183,7 +236,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     for (const name of ['langsys-js-react', 'langsys-js-svelte', 'langsys-js-vue']) {
         const p = pkgs[name];
         if (!p) continue;
-        const dts = existsSync(join(p.dir, 'dist/index.d.ts')) ? readFileSync(join(p.dir, 'dist/index.d.ts'), 'utf8') : '';
+        const dts = typeSurface(p.dir);
         for (const comp of ['Translate', 'Phrase', 'DontTranslate']) {
             if (!new RegExp(`\\b${comp}\\b`).test(dts)) {
                 regressions.push(`${name}@${p.version} no longer exports ${comp} — choosing-primitives.md claims full parity`);

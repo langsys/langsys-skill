@@ -2,34 +2,60 @@
 
 Every load-bearing claim the skill makes, checked against the **published artifact users actually install** — `npm pack <pkg>@<version>` / Packagist — never a sibling working tree (PLAN.md §1).
 
-**Verified:** table below captured 2026-08-16; defect statuses re-verified against the
-published tarballs on **2026-08-26**.
+**Verified:** snapshot table captured **2026-10-30** for `langsys-skill@0.3.0`; the entries
+below it each name the version they were checked against, on the date they were written.
 
 > A single date on a living file goes stale silently, which is this file's own failure class.
 > Treat the date as belonging to the **snapshot table**, not to every claim — each entry names
 > the version it was verified against. For "is this still true *right now*", the authoritative
 > answer is `node src/bin/drift-guard.mjs`, which re-fetches the published artifacts.
 
+## What this file is responsible for, as of 0.3.0
+
+0.3.0 turns this package into the **entry skill** plus the installer for the skills that ship
+inside each SDK. That moves most of the verification burden to the repos that own the code:
+each SDK's own release gate checks its skill against its built package.
+
+What stays verified **here**:
+
+- the claims the entry skill makes, which are the cross-language ones;
+- the **pinned guides**, for SDKs that do not yet ship a skill — each against one published
+  version, exactly;
+- the resolution facts in `src/skill/sdk-versions.md`, which are properties of the dependency
+  graph rather than of any one SDK, so no single SDK's repo can check them;
+- the cross-SDK agreement in `src/skill/two-languages.md`.
+
+What left: the per-SDK behavioural claims for TypeScript, Svelte and PHP. Their guides were
+removed rather than left behind — a stale copy in this package would outrank the real one,
+because this payload installs whether or not the SDK's skill does. Entries about them below
+are kept as the record of how they were found, not as current guidance.
+
 ## Published versions at time of verification
 
-| Package | Published | Local checkout | Peer deps | Depends on base |
+| Package | Published | Peer deps | Depends on base | Guidance comes from |
 |---|---|---|---|---|
-| `langsys-js-typescript` | **0.6.5** | 0.4.1 | — | `intl-messageformat@^11.2.7` |
-| `langsys-js-react` | **0.6.6** | 0.4.1 | `react@^18 \|\| ^19` | `^0.6.5` |
-| `langsys-js-svelte` | **3.6.9** | 3.4.0 | `svelte@^5` | `^0.6.4` |
-| `langsys-js-vue` | **0.2.1** | 0.1.1 | `vue@^3.4` | `^0.6.5` |
-| `langsys/langsys-php` | **1.3.1** | — | PHP ≥7.4 + ext-intl | — |
-| `langsys-js-server` | **0.1.0** | — | none (`parse5`, `intl-messageformat`), Node ≥18 | — (does not depend on the base SDK) |
+| `langsys-js-typescript` | **0.7.0** | — | `intl-messageformat@^11.2.7` | its own `langsys-typescript` skill (ships 0.7.1) |
+| `langsys-js-svelte` | **4.0.0** | `svelte@^5`, `@sveltejs/kit@^2.10` (optional) | `^0.7.0` | its own `langsys-svelte` skill (ships 4.0.1) |
+| `langsys-js-react` | **0.6.7** | `react@^18 \|\| ^19` | `^0.6.5` | **pinned here**, `pinned/react.md` |
+| `langsys-js-vue` | **0.2.1** | `vue@^3.4` | `^0.6.5` | **pinned here**, `pinned/vue.md` |
+| `langsys/langsys-php` | **2.0.0** | PHP ≥7.4 + ext-intl | — | its own `langsys-php` skill (ships 2.0.1) |
+| `langsys/langsys-php-laravel` | **1.0.0** | PHP ≥8.1, Laravel 10–12 | `langsys/langsys-php@^1.3` | **pinned here**, `pinned/laravel.md` |
+| `langsys-js-server` | **0.1.0** | none (`parse5`, `intl-messageformat`), Node ≥18 | — (does not depend on the base SDK) | **pinned here**, `pinned/js-server.md` |
+
+Svelte 4.0.0 and PHP 2.0.0 are published but their skills are not, so this package carries **no
+guide for them**: the versions its former guides described (3.6.x and 1.x) are not what a
+project installs now, and their READMEs are accurate. `sdk-versions.md` routes to those READMEs
+and says why.
 
 `langsys-js-server` is the one package here that is **not** a binding over `langsys-js-typescript` —
 it reimplements translation against finished HTML, which is why it has no base-SDK dependency and no
-peer framework. Its claims live in `src/skill/core/server-sdk.md`, verified against the `0.1.0`
+peer framework. Its claims live in `src/skill/pinned/js-server.md`, verified against the `0.1.0`
 tarball; `0.1.0` carries **no provenance attestation**, having been published outside CI.
 
-**Two packages have published newer versions since this snapshot** — `langsys-js-react@0.6.7` and
-`langsys-js-svelte@3.6.10`. The pins above are deliberately **not** bumped: a version number is not
-evidence, and re-pinning without re-reading the artifact would launder an assumption into a
-verified claim. The defect statuses below *were* re-checked against `3.6.10` and are cited as such.
+The pins above were re-read from the published artifacts for this snapshot, not carried forward
+from the previous one: a version number is not evidence, and re-pinning without re-reading the
+artifact would launder an assumption into a verified claim. Where an entry below cites an older
+version, that is the version it was measured against and it says so.
 
 All three binding carets now resolve to base **`0.6.4` or newer** (React `^0.6.5`, Vue `^0.6.5`, Svelte `^0.6.4`), verified from each published `package.json`. That closes a structural gap worth naming: the old Vue range `^0.4.1` capped at `0.4.3`, so **every base-SDK fix from `0.5.0` onward was unreachable for Vue consumers regardless of what any document claimed.** A caret is part of the API surface — a correct fix behind a stale range ships as no fix at all.
 
@@ -1455,3 +1481,240 @@ upstream defect tracked here is now resolved in a published artifact.
 > would print as `still open in <pkg>@<version>` — the wording for a defect that never left, which
 > reads as *no news*. So the guard is currently strongest on defects it has always seen and
 > weakest on regressions of fixes, which is the inverse of what a drift guard is for.
+
+---
+
+# 0.3.0 — the entry skill, and what only this package can verify
+
+Recorded 2026-10-30. Measured against published artifacts: `langsys-js-typescript@0.7.0`
+and `@0.6.5` installed from the registry, `langsys-js-react@0.6.7`, `langsys-js-vue@0.2.1`,
+`langsys-js-svelte@4.0.0`.
+
+## Claim: a binding's version tells you nothing about its core, and React and Vue cannot reach 0.7
+
+The load-bearing claim of `src/skill/sdk-versions.md`, and the reason the pinned guides exist
+at all. Measured by installing each published binding into an empty project and reading the
+resolved `langsys-js-typescript/package.json`:
+
+```
+langsys-js-react@0.6.7    declares ^0.6.5  ->  resolves core 0.6.5
+langsys-js-vue@0.2.1      declares ^0.6.5  ->  resolves core 0.6.5
+langsys-js-svelte@3.6.17  declares ^0.6.4  ->  resolves core 0.6.5
+langsys-js-svelte@4.0.0   declares ^0.7.0  ->  resolves core 0.7.x
+```
+
+A caret on a `0.x` version pins the **minor**, so `^0.6.5` means `>=0.6.5 <0.7.0`. React and
+Vue therefore cannot accept core 0.7 by any dependency operation short of a new release of the
+binding.
+
+**Why this cannot be verified in any SDK's own repo.** It is a property of the dependency
+graph, not of a package: each binding's tests pass against the core it declares, and the core's
+tests pass on their own. The thing that is wrong — guidance written for 0.7 being applied to an
+app on 0.6.5 — is invisible from inside either.
+
+## Claim: installing the core alongside a binding gives the app two cores
+
+The instruction Reviewer asked be made explicit, and it needed measuring rather than reasoning
+about, because the obvious expectation is that npm would dedupe or refuse:
+
+```
+npm i langsys-js-react@0.6.7 langsys-js-typescript@0.7.0
+
+node_modules/langsys-js-typescript                                  -> 0.7.0
+node_modules/langsys-js-react/node_modules/langsys-js-typescript    -> 0.6.5
+```
+
+Both are present and both load. They are separate module instances, so the app holds two
+locale subscriptions, two in-memory catalogs and two registration queues over one project,
+neither aware of the other — and `useT()` runs on 0.6.5 while a direct import runs on 0.7.0.
+Nothing errors, and the base language renders correctly throughout.
+
+This is why `sdk-versions.md` states it as a prohibition rather than a caution: an agent
+looking for a 0.7 feature in a React app will reach for exactly this, and the failure gives it
+no feedback. `doctor` reports it as an error, and the installer names it when it finds two
+skills for one name.
+
+## Claim: the two SDKs agree on ids, and it is checkable in two commands
+
+`src/skill/two-languages.md` tells a reader to verify the cross-SDK hash agreement themselves
+rather than trusting it. Measured here:
+
+```
+node -e "import('langsys-js-typescript/pure').then(m=>console.log(m.md5('Café')))"
+  -> 4655bd14eebfaf444e5b33d6851dbbd0
+php -r 'echo md5("Café"), PHP_EOL;'
+  -> 4655bd14eebfaf444e5b33d6851dbbd0
+```
+
+Both hash UTF-8 bytes, so non-ASCII content lands on one id. Also measured from
+`langsys-js-typescript@0.7.0`'s `/pure` entry:
+
+```
+generateCustomId('Pricing', ['Compare every plan','Cancel anytime'])  -> 65651be2c98d6a129882c57eeb373e80
+generateCustomId(undefined, ['Hello'])                               -> 0ab6be3c04761e7643cb965ae2e9de2e
+generateCustomId('__uncategorized__', ['Hello'])                     -> 0ab6be3c04761e7643cb965ae2e9de2e
+normalizeMarkupPlaceholders('Based on %n% reviews')                  -> 'Based on {n} reviews'
+```
+
+No category and the literal `__uncategorized__` produce the same id. `%n%` and `{n}` register
+the same phrase.
+
+**Marker families, read from the published constants rather than from prose:**
+
+```
+PHRASE_MARKER_ATTRS         ["data-ls-phrase",       "data-langsys-phrase"]
+CONTENT_BLOCK_MARKER_ATTRS  ["data-ls-contentblock", "data-langsys-contentblock"]
+RESOLVED_MARKER_ATTRS       ["data-ls-resolved",     "data-langsys-resolved"]
+VAR_PARAM_ATTR               "data-ls-param"
+```
+
+And from `langsys-php` 2.0's source, both families are handled on the PHP side too. **This
+corrects a claim the previous skill made**: that `data-ls-*` is silently ignored by PHP. True
+of PHP 1.x, and the pinned troubleshooting entry still says so for projects on it — but it is
+no longer true in general, and stating it unqualified would now send someone to rewrite working
+markup.
+
+## Correction: the drift guard was reporting a false regression on the claim everything rests on
+
+`langsys-js-typescript@0.7.0` moved `TFunction` out of `dist/index.d.ts` into a content-hashed
+chunk (`dist/pure-DkFXdgVa.d.ts`) re-exported from it. The guard read the entry file only, so
+it reported:
+
+```
+✗ REGRESSION  t() signature changed in 0.7.0
+```
+
+The signature is byte-identical — both overloads are present, verified by reading the chunk:
+
+```ts
+<P extends string>(phrase: P, ...args: TArgs<P>): string;
+<P extends string>(phrase: P, category: string, ...args: TArgs<P>): string;
+(strings: TemplateStringsArray, ...values: unknown[]): string;   // new in 0.7.0, additive
+```
+
+A false alarm on the most load-bearing claim in the skill is worse than the drift it imitates:
+it trains a reader to disbelieve the guard, and the hash in the filename means it would recur
+on every rebuild. The guard now resolves the **type surface** by following the re-exports, and
+never names a file. Fixed in 0.3.0.
+
+## Correction: `apiUrl` is a real field, and the lint rule could not know which answer applies
+
+`apiUrl` is on `iLangsysInitConfig` in 0.7.0, and its own doc comment says to prefer it over
+`LangsysAppAPI.setBaseUrl()` — because the setter must run before `init()`, and running it
+after leaves the SDK permanently inert with nothing thrown.
+
+But React and Vue are on 0.6.5, where the field is silently dropped. So the same line is
+correct in one app and a silent misconfiguration in the next, decided by a resolved dependency
+that the source does not mention. The `no-init-apiurl` rule is therefore a **warning** naming
+the version boundary and the one-line check, not an error: an error would fire on correct code
+in half the fleet, and a rule that fires on correct code gets bypassed — taking with it the
+cases it was right about.
+
+**It paid for itself immediately.** As a warning over the published examples it found
+`langsys-js-vue/example/nuxt/server/plugins/langsys.ts`, which calls `init({ apiUrl: ... })` in
+a binding pinned to `^0.6.5`. That example's server-side init talks to production rather than
+`LANGSYS_API_URL`, with no error. Reported to the Vue lane; baselined in the suite as
+`KNOWN_UPSTREAM_LINT`.
+
+## Correction: the markup rule inverts under Svelte 4's build transform
+
+`langsys-js-svelte@4.0.0` ships `langsysPreprocess()`, which reads `{expression}` inside
+`<Translate>` and `<Phrase>` from the source and registers it as a named placeholder. Where it
+is configured, `{name}` in that markup is **correct** — the opposite of what
+`markup-brace-placeholder` said.
+
+`markup-check.mjs` now looks for the symbol in the project's `svelte.config.*` / `vite.config.*`
+and downgrades to a warning that names the ambiguity. Two things it deliberately does **not**
+do: decide which files a config's transform covers (a config can scope it to a subset — the
+Svelte repo's own `vite.config.ts` does exactly that), or treat absence as permission. Putting
+a heuristic on the suppression side is this project's recurring failure, and it is silent when
+wrong.
+
+Measured both ways on a two-file fixture, and asserted in the suite:
+
+```
+no langsysPreprocess in config   ->  1 error(s), 0 warning(s)
+langsysPreprocess in config      ->  0 error(s), 1 warning(s), naming the transform
+```
+
+## Found while measuring: `{{ }}` inside `<Translate>` in Vue's own example
+
+`langsys-js-vue/example/App.vue` and `example/nuxt/app/pages/index.vue` interpolate
+`{{ user.firstName }}` inside `<Translate>`. Vue substitutes before Langsys captures the text,
+so the registered phrase holds one specific user's name — a phrase per visitor, in a catalog
+every SDK on the project shares. Vue is on core 0.6.5 and has no build transform, so there is
+no version in which this is correct. Reported to the Vue lane; baselined as
+`KNOWN_UPSTREAM_MARKUP`.
+
+## Correction: a test helper could not observe the thing it was asserting
+
+`sg()` in the suite returned `''` whenever ast-grep exited 0, which made it blind to
+**warning**-severity findings — ast-grep exits 0 for those. That was harmless while every
+ast-grep rule was an error, and became a silent hole the moment one was not: a test asserting
+a warning fires could never have passed. Fixed to capture output on both paths, with `sgErrors`
+for the negatives that mean "nothing is wrong here".
+
+The general form, which this project keeps relearning: **a helper that cannot see a state
+cannot be used to assert anything about that state**, and it fails by passing.
+
+## Correction: the installer always reported the payload as unchanged
+
+`installPayload()` decided "changed" by comparing the landed `SKILL.md` against the expected
+content — **after** `cpSync` had already written it. Always equal, so every install, including
+the first into an empty directory, reported the payload as unchanged. The honesty that
+reporting exists for was therefore missing in exactly the case that matters: an upgrade that
+rewrote the whole payload read as a no-op. The comparison now happens before the copy, and the
+suite asserts a fresh install reports a write and a re-install reports none.
+
+## Pins the pinned guides are verified against
+
+Exact versions, not floors. Outside the pin, `doctor` says to read that package's README — a
+guide one minor behind reads as authoritative and is wrong where the failures are silent.
+
+| Guide | Verified against | Core |
+|---|---|---|
+| `pinned/react.md`, `pinned/ssr-nextjs.md` | `langsys-js-react@0.6.7` | 0.6.5 |
+| `pinned/vue.md`, `pinned/ssr-nuxt.md` | `langsys-js-vue@0.2.1` | 0.6.5 |
+| `pinned/js-server.md` | `langsys-js-server@0.1.0` | n/a |
+| `pinned/laravel.md` | `langsys/langsys-php-laravel@v1.0.0` | PHP SDK 1.3.x |
+| `pinned/core-0.6/*` | `langsys-js-typescript@0.6.5` | 0.6.5 |
+
+The Laravel pin is read from its published `composer.json`: `langsys/langsys-php: ^1.3`. A
+Laravel app is therefore on PHP SDK 1.3.x and has none of 2.0's behaviour, so `pinned/laravel.md`
+states that the `langsys-php` core skill must not be read for it.
+
+## Correction: a read-only session's report does not register anything
+
+The 0.7.0 README describes a discovery renderer loading a reported URL and registering what the
+page shows. Per the operator (2026-10-28) that renderer does not run in production, so the
+skill must not promise it. What the entry skill says instead, in `projects-and-keys.md`: a
+read-only session reports the page's URL and Langsys **records** it, and content registers only
+when a write-enabled session renders the page — an allow-listed machine with an `ip_write` key,
+or a signed-in user's session carrying a write grant.
+
+The distinction is load-bearing for planning, not cosmetic: an integration whose only write path
+is "a visitor hits the page" registers nothing, and the reported pages stay reported. The entry
+skill asks for that decision explicitly.
+
+## Branch review, 2026-10-30 — nine defects in the new machinery
+
+A read-only review of `feature/entry-skill-0.3.0` against `main`. All nine were verified by
+running the installer, `doctor`, `skill-contract`, ast-grep and the suite against real sibling
+checkouts, not by reading the diff. Each fix carries a test that fails without it, verified by
+reverting the fix one at a time and confirming that exactly its own test goes red.
+
+Two are worth recording beyond the changelog, because both are instances of patterns this file
+already tracks:
+
+**"A copy goes stale visibly" was false in the one case that mattered.** The design argument for
+copying rather than linking is that staleness becomes visible. But nothing pruned a copy whose
+package was gone, and `doctor`'s orphan check iterates the manifest — which no longer listed it.
+So the stale copy was live to the agent and invisible to the tool at the same time. The guarantee
+a design rests on is the one to test first, and it was the one with no test.
+
+**A helper that could not observe the state it was asserting.** `sgErrors` was added with a
+comment explaining why warning-severity findings must be tolerated, then used nowhere — and as
+written it would not have worked, because ast-grep puts the severity on the header line only and
+the filter ran per line. Same shape as the `sg()` defect it was meant to fix, one layer up: the
+fix was written, described correctly, and never exercised. There is now a test that trips a
+warning-only fixture and asserts it reads as clean, with an error fixture as the paired positive.

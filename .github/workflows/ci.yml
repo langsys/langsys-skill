@@ -97,6 +97,27 @@ jobs:
           node /tmp/proj/.langsys/bin/scan.mjs /tmp/proj --json | node -e \
             'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);if(!j.notExamined.declaredBlindSpots.length)process.exit(1)})'
 
+      - name: The shared preamble and inbound SDK links
+        # Cross-repo, and one direction is urgent: an SDK skill links into this
+        # payload by URL, and a published package cannot be edited — so a rename
+        # here has to be caught before it ships, not after someone's link 404s.
+        #
+        # Exit 2 means it found no SDK skill to check against, which is the
+        # normal state in CI (no sibling checkouts, and the SDK skills are not
+        # released yet). That is explicitly NOT a pass, so it is reported rather
+        # than swallowed: a green run that verified nothing is the failure this
+        # repo keeps writing checks to avoid.
+        run: |
+          set +e
+          node src/bin/skill-contract.mjs | tee /tmp/contract.txt
+          code=${PIPESTATUS[0]}
+          set -e
+          if [ "$code" = "2" ]; then
+            echo "::warning::skill-contract found no SDK skills to check — nothing was verified."
+            exit 0
+          fi
+          exit "$code"
+
       - name: Changelog covers every released tag
         # Recurring, not one-shot, and --strict so it FAILS rather than notes.
         # The defect it prevents has no symptom on the day it happens: a missing

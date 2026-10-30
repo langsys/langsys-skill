@@ -1,5 +1,9 @@
 # Migrating from i18next / react-i18next
 
+> **Pinned guide.** The codemod route, for base SDK core **0.6.x** only. On core 0.7 the `langsys-typescript` skill's `legacyKeys` path replaces this.
+> A project on another version reads that package's own README instead —
+> [why](../README.md).
+
 Read [_method.md](./_method.md) first — the six phases matter more than this syntax table.
 
 ## Detect
@@ -109,7 +113,7 @@ t('{gender, select, male {His friend} female {Her friend} other {Their friend}}'
 
 ## Verify
 
-Beyond [verify.md](../verify.md):
+Beyond [verify.md](../core-0.6/verify.md):
 
 - [ ] No `t('dot.key')` survivors — `langsys-no-dot-key-phrase` catches these
 - [ ] Every `<Trans>` became `<Phrase>`, none became `<Translate>`

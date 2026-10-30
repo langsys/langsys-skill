@@ -1,7 +1,11 @@
 # `langsys-js-server` — translated HTML on the server
 
+> **Pinned guide.** Verified against `langsys-js-server@0.1.0`.
+> A project on another version reads that package's own README instead —
+> [why](./README.md).
+
 **Use this when a public site needs crawler-visible translated body copy.** For an app behind a
-login, skip it — see [rendering-mode.md](./rendering-mode.md).
+login, skip it — see [rendering-mode.md](./core-0.6/rendering-mode.md).
 
 ```bash
 npm install langsys-js-server
@@ -18,7 +22,7 @@ In React, Vue and Svelte, `init()` runs in a client-only hook, so on its own it 
 server render in the **base language**. Passing `initialTranslations` to `init()` doesn't change
 that; it removes the flash and the second fetch. On **SvelteKit**, seeding the store in the
 layout body *does* make `t()` server-render, and it's safe there; see
-[rendering-mode.md](./rendering-mode.md). On the React and Vue tracks the guidance is not to seed the
+[rendering-mode.md](./core-0.6/rendering-mode.md). On the React and Vue tracks the guidance is not to seed the
 store: it's easily broken by any await before a read, and doesn't work at all on the Next App
 Router. This package puts a
 **request-scoped** catalog on the server so `t()` resolves during the render without relying on
@@ -119,7 +123,7 @@ node -e "import('langsys-js-server').then(m=>console.log(m.auditRenderedHtml(htm
 
 `curl` is valid for this one specific thing — **counting bytes in the served HTML** — because that
 is the property being tested. It remains invalid for judging whether translation works, since
-client-side translation happens after hydration. See [../verify.md](../verify.md).
+client-side translation happens after hydration. See [./core-0.6/verify.md](./core-0.6/verify.md).
 
 `auditRenderedHtml(html)` lists every element still carrying a phrase marker, so *"which of my
 copy is still base language"* is a list rather than an inference. It is a development aid and is

@@ -1,9 +1,13 @@
 # SSR — Next.js (App Router & Pages Router) / Remix
 
+> **Pinned guide.** Goes with [react.md](./react.md): `langsys-js-react@0.6.7`, base SDK core **0.6.5**.
+> A project on another version reads that package's own README instead —
+> [why](./README.md).
+
 
 > ### ⛔ Do NOT seed the catalog store during SSR here — three separate verdicts
 >
-> [core/rendering-mode.md](../core/rendering-mode.md) describes seeding `sTranslations` +
+> [core/rendering-mode.md](./core-0.6/rendering-mode.md) describes seeding `sTranslations` +
 > `currentlyLoadedLocale` during the render so `t()` server-renders. **That is recommended on
 > SvelteKit and not here.** `langsys-js-react` does re-export both settable signals, so the
 > code will look like it works. Measured **2026-08-30** against published
@@ -62,7 +66,7 @@
 > `serverGlobalLocale` empty because no module state is touched at all. 8 × 10 concurrent:
 > **80 responses, 80 correct, 0 bleeds.** Immune to the graph split by construction — a pure
 > function has no singleton to land in the wrong graph. See §4 below, or
-> [`langsys-js-server`](../core/server-sdk.md).
+> [`langsys-js-server`](./js-server.md).
 >
 > **Hydration: `init({ initialTranslations, initialTranslationsLocale })`** passed through
 > the RSC payload into a client boundary. Measured working — the client graph seeds, which is
@@ -72,14 +76,14 @@
 > **Never touch the global stores from a Server Component.**
 >
 > **Condition 3 (reset on failure) applies to all three, regardless of renderer.** See "the
-> failure path must reset" in [core/rendering-mode.md](../core/rendering-mode.md). It bit
+> failure path must reset" in [core/rendering-mode.md](./core-0.6/rendering-mode.md). It bit
 > under the *synchronous* renderer, so passing verdict 1 buys no protection from it.
 
 
 
-Read [integrate/react.md](../integrate/react.md) first. This adds the server half.
+Read [integrate/react.md](./react.md) first. This adds the server half.
 
-> **Decide the rendering mode first: [core/rendering-mode.md](../core/rendering-mode.md).**
+> **Decide the rendering mode first: [core/rendering-mode.md](./core-0.6/rendering-mode.md).**
 > Public site → SSR; app behind a login → client-only with a ready gate, and skip this track.
 >
 > **Know what SSR does and does not give you here.** `t()`, `<Phrase>` and `<Translate>`
@@ -89,7 +93,7 @@ Read [integrate/react.md](../integrate/react.md) first. This adds the server hal
 > This track buys one catalog fetch instead of two, no flash after hydration, and a
 > *current* catalog per request. For text a crawler or a social scraper must read,
 > resolve it from the fetched catalog directly — see
-> [core/rendering-mode.md](../core/rendering-mode.md#resolve-crawler-visible-text-through-a-pure-catalog-function).
+> [core/rendering-mode.md](./core-0.6/rendering-mode.md#resolve-crawler-visible-text-through-a-pure-catalog-function).
 
 > ## For crawler-visible translated body copy, use the catalog function or `langsys-js-server`
 >
@@ -99,7 +103,7 @@ Read [integrate/react.md](../integrate/react.md) first. This adds the server hal
 > language during SSR.
 >
 > **`langsys-js-server` puts a request-scoped catalog on the server so `t()` resolves during the
-> render.** Read [core/server-sdk.md](../core/server-sdk.md) before choosing between it and the
+> render.** Read [core/server-sdk.md](./js-server.md) before choosing between it and the
 > pure catalog function.
 >
 > `<Phrase>` and `<Translate>` are still client-only in its 0.1.0 — and **nothing signals that for

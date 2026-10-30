@@ -1,5 +1,9 @@
 # Troubleshooting
 
+> **Pinned guide.** Base SDK `langsys-js-typescript@0.6.5` — the core the React and Vue bindings install. **Not** core 0.7; for that read the `langsys-typescript` skill.
+> A project on another version reads that package's own README instead —
+> [why](../README.md).
+
 Symptom → cause → fix. Most Langsys problems look identical in the base language, so start by **switching locale** — that is what exposes them.
 
 ---
@@ -106,7 +110,7 @@ awaiting wrapper:
 ```
 
 The second form still needs the content itself to be static prose — see
-[invariants.md §6](./core/invariants.md).
+[invariants.md §6](./invariants.md).
 
 ## Nothing translates at all
 
@@ -122,7 +126,7 @@ Then, in order:
 | Cause | Check |
 |---|---|
 | Wrong project ID or key | `res.errors` names it |
-| Env var undefined at runtime | Wrong bundler prefix — `console.log` the value; see [core/secrets.md](./core/secrets.md) |
+| Env var undefined at runtime | Wrong bundler prefix — `console.log` the value; see [core/secrets.md](../../projects-and-keys.md) |
 | No translations exist yet | Expected on a new project. The base language **is** the fallback — translate something in the Translation Manager first |
 | Component not subscribed | React: `useT()` in that component. Svelte: `$t`. Vue: `t()` in template |
 | Init runs after render | Gate rendering on `ready` |
@@ -154,7 +158,7 @@ The sentence went through `<Translate>` when it needed `<Phrase>`.
 </Phrase>
 ```
 
-See [core/choosing-primitives.md](./core/choosing-primitives.md).
+See [core/choosing-primitives.md](./choosing-primitives.md).
 
 ## Plurals are wrong in Russian / Arabic / Polish (fine in English)
 
@@ -184,7 +188,7 @@ Fix the call site, then delete the junk entries. If this ran in production with 
 
 ## Flash of untranslated content on load
 
-SSR without seeding. Pass **both** `initialTranslations` and `initialTranslationsLocale` — either alone does nothing. See the [ssr/](./ssr/) tracks.
+SSR without seeding. Pass **both** `initialTranslations` and `initialTranslationsLocale` — either alone does nothing. See the [ssr/](../) tracks.
 
 ## Two catalog requests per page load
 
@@ -233,7 +237,7 @@ Exercise the flow in development first so the phrases register, then deploy.
 It is published (`v1.0.0`–`v1.3.0`). Check in order:
 
 1. **Package name** — it was renamed from `langsys/php-sdk`, which is not registered and never will be.
-2. **`ext-intl`** — a hard requirement, so Composer refuses to install without it. That is deliberate; do not reach for `--ignore-platform-req` without reading [integrate/php.md](./integrate/php.md) §0.
+2. **`ext-intl`** — a hard requirement, so Composer refuses to install without it. That is deliberate; do not reach for `--ignore-platform-req` without reading the `langsys-php` core skill.
 3. **PHP ≥ 7.4.**
 
 ## Translations stale after updating them in the Translation Manager
@@ -315,8 +319,8 @@ It depends which SDK you are in — there are **three** answers, and carrying an
 | Context | `data-ls-phrase` | `data-langsys-phrase` |
 |---|---|---|
 | React / Vue / Svelte bindings | **Internal.** The component sets it; never write it | honored by the tokenizer (base ≥ 0.6.0) |
-| **Vanilla JS/TS** | **Author-facing** — write it when nesting a `Phrase` inside a `Translate` ([integrate/vanilla-ts.md](./integrate/vanilla-ts.md)) | equivalent as of base 0.6.0 |
-| PHP | **Not recognised.** Silently ignored — no error, no effect | **the author-facing marker** ([integrate/php.md](./integrate/php.md)) |
+| **Vanilla JS/TS** | **Author-facing** — write it when nesting a `Phrase` inside a `Translate` (the `langsys-typescript` core skill) | equivalent as of base 0.6.0 |
+| PHP | **Not recognised.** Silently ignored — no error, no effect | **the author-facing marker** (the `langsys-php` core skill). On PHP SDK 2.0 both families are recognised |
 
 **As of base SDK 0.6.0 the JS tokenizer honors both spellings; 0.6.1 fixed how it reads the value.** `PHRASE_MARKER_ATTRS` and `isPhraseMarked()` are exported for wrappers that tokenize through their own templating.
 

@@ -61,8 +61,8 @@ Perfectly valid. Add a category when ambiguity appears, not preemptively.
 <Phrase category="ProductCard" params={{ n }}>…</Phrase>
 ```
 
-Same rules. In PHP, `data-langsys-category` on an element, or selector-based mapping — see [integrate/php.md](../integrate/php.md).
+Same rules. In PHP, `data-langsys-category` on an element, or selector-based mapping — see the `langsys-php` core skill.
 
 ## Migrating from namespaced keys
 
-Do **not** map i18next namespaces 1:1 to categories — that recreates the duplication Langsys exists to remove. Collapse to feature-level categories and let identical phrases share entries. See [migrate/_method.md](../migrate/_method.md) phase 3.
+Do **not** map i18next namespaces 1:1 to categories — that recreates the duplication Langsys exists to remove. Collapse to feature-level categories and let identical phrases share entries. See [migrate/_method.md](./pinned/migrate/_method.md) phase 3.

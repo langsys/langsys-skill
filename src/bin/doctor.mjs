@@ -11,21 +11,38 @@
  */
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { join, resolve, dirname } from 'node:path';
 import { execSync } from 'node:child_process';
+import { discoverSkills } from './lib/discover-skills.mjs';
 import { homedir } from 'node:os';
 
 const root = resolve(process.argv[2] ?? process.cwd());
 
 /** Minimum base SDK exposing the unmatched-params debug warning. */
 const WARN_FLOOR = '0.4.3';   // unmatched-params warning floor (unchanged by 0.5.0)
-/** Verified-against versions. Outside this range, guidance may not apply. */
-const VERIFIED = {
-    'langsys-js-typescript': '0.6.5',
-    'langsys-js-react': '0.6.6',
-    'langsys-js-svelte': '3.6.9',
+/**
+ * The versions THIS package's own pinned guides were verified against.
+ *
+ * An exact match, not a floor. These guides exist only for SDKs that do not yet
+ * ship a skill of their own, and a guide one minor behind reads as
+ * authoritative while being wrong in the places that fail silently — locale
+ * case, who may register, whether a config field exists. So "close" is not a
+ * pass: outside the pin, the answer is that package's README.
+ *
+ * Packages absent from this map are expected to carry their own skill. When one
+ * does, its skill wins over anything here; when it does not, there is no guide
+ * for it and doctor says so rather than substituting a neighbour's.
+ */
+const PINNED = {
+    'langsys-js-react': '0.6.7',
     'langsys-js-vue': '0.2.1',
+    'langsys-js-server': '0.1.0',
+    'langsys/langsys-php-laravel': '1.0.0',
 };
+
+/** Base SDK the pinned React/Vue guides describe. */
+const PINNED_CORE = '0.6.5';
 
 /**
  * Minimum base-SDK caret each binding must declare. A binding whose range caps
@@ -82,6 +99,66 @@ const has = (n) => Object.prototype.hasOwnProperty.call(deps, n);
 const bindings = ['langsys-js-react', 'langsys-js-vue', 'langsys-js-svelte', 'langsys-js-typescript']
     .filter(has);
 
+/**
+ * Where this project's guidance for a package comes from, and whether it fits.
+ *
+ * Three outcomes, and the third is the one that was missing: a package with no
+ * pinned guide here used to produce NO output at all, because the only read of
+ * `PINNED` sat inside a loop over four hardcoded binding names. So a Laravel or
+ * `langsys-js-server` project got no pin check while this package ships guides
+ * claiming exact versions for both, and a vanilla-TS project was told nothing
+ * about which guidance applies. Silence is what every check in this file exists
+ * to prevent; it is also the hardest state to notice, because it looks like a
+ * pass.
+ */
+function reportPin(name, v) {
+    const pinned = PINNED[name];
+    if (!pinned) {
+        info(`${name}@${v}: no pinned guide here — read its own skill`,
+             `This package is expected to ship its own skill. If it is not among your skills, ` +
+             `read ${name}'s README for ${v} rather than a guide written for another version.`);
+        return;
+    }
+    if (cmpVersion(v, pinned) === 0) {
+        ok(`${name}@${v} matches the pinned guide`,
+           PINNED_CORE_PACKAGES.has(name) ? `That guide describes base SDK core ${PINNED_CORE}.` : undefined);
+    } else {
+        warn(`${name}@${v} is outside the pinned guide (${pinned})`,
+             `This package's guide for ${name} was verified against ${pinned} only. ` +
+             `Read ${name}'s own README instead, and say that is what you used. ` +
+             `A guide a version behind is wrong exactly where the failures are silent.`);
+    }
+}
+
+/** Pinned packages whose guide describes core 0.6.5 rather than their own version. */
+const PINNED_CORE_PACKAGES = new Set(['langsys-js-react', 'langsys-js-vue']);
+
+// Pinned packages that are NOT in `bindings`: the Laravel wrapper lives in
+// composer, and the server SDK is not a binding over the base SDK at all. Both
+// ship guides here claiming an exact version, so both need the check.
+{
+    const composerDeps = { ...composer?.require, ...composer?.['require-dev'] };
+    for (const name of Object.keys(PINNED)) {
+        if (bindings.includes(name)) continue;
+        if (name.includes('/')) {
+            if (!Object.prototype.hasOwnProperty.call(composerDeps, name)) continue;
+            const inst = readJson(join(root, 'vendor', name, 'composer.json'));
+            // Composer does not record the resolved version in the package's own
+            // manifest, so fall back to the lock file, which does.
+            const lock = readJson(join(root, 'composer.lock'));
+            const v = lock?.packages?.find((p) => p.name === name)?.version?.replace(/^v/, '')
+                ?? inst?.version;
+            if (v) reportPin(name, v);
+            else info(`${name} is required but its resolved version could not be read`,
+                      'Run `composer show ' + name + '` and compare it with the pinned guide.');
+            continue;
+        }
+        if (!has(name)) continue;
+        const inst = readJson(join(root, 'node_modules', name, 'package.json'));
+        if (inst?.version) reportPin(name, inst.version);
+    }
+}
+
 const framework =
     has('react') ? 'react' : has('vue') ? 'vue' : has('svelte') ? 'svelte' : pkg ? 'vanilla' : null;
 
@@ -109,16 +186,7 @@ for (const name of bindings) {
         continue;
     }
     const v = installed.version;
-    const verified = VERIFIED[name];
-    if (verified && cmpVersion(v, verified) < 0) {
-        warn(`${name}@${v} is older than the verified ${verified}`,
-             'Some guidance may not apply. Upgrade, or confirm behavior before relying on it.');
-    } else if (verified && cmpVersion(v, verified) > 0) {
-        warn(`${name}@${v} is newer than the verified ${verified}`,
-             'Behavior may have changed since verification. Re-verify before trusting version-gated guidance.');
-    } else {
-        ok(`${name}@${v} matches verified`);
-    }
+    reportPin(name, v);
 
     // The binding's declared range on the base SDK. A caret that caps below a
     // fix delivers that fix to nobody — and nothing in the binding's own docs or
@@ -135,6 +203,116 @@ for (const name of bindings) {
         } else {
             ok(`${name} declares base ${declared} (≥ ${floor})`);
         }
+    }
+}
+
+// ── Which core each binding actually resolved to ─────────────────────────────
+//
+// The question that decides which half of every version-gated rule applies, and
+// one a human cannot answer by reading package.json: a binding's own version
+// says nothing about the core underneath. `^0.6.5` pins the MINOR on a 0.x
+// version, so React and Vue cannot accept 0.7 at all.
+//
+// Reported per binding, from the layout on disk, because a nested copy is both
+// the honest answer and a hazard worth naming.
+
+for (const name of bindings) {
+    if (name === 'langsys-js-typescript') continue;
+    const nested = readJson(join(root, 'node_modules', name, 'node_modules', 'langsys-js-typescript', 'package.json'));
+    const top = readJson(join(root, 'node_modules', 'langsys-js-typescript', 'package.json'));
+    const resolved = nested?.version ?? top?.version;
+    if (!resolved) continue;
+
+    if (nested && top && nested.version !== top.version) {
+        err(`${name} runs on core ${nested.version} while the project also has core ${top.version}`,
+            `Two copies of the core are installed, so there are two module instances: two locale ` +
+            `subscriptions, two in-memory catalogs and two registration queues over one project, ` +
+            `neither aware of the other. Nothing errors and the base language renders correctly. ` +
+            `Remove the direct langsys-js-typescript dependency and import only from ${name}; ` +
+            `a core 0.7 feature is not reachable from a binding pinned below it.`);
+    } else {
+        ok(`${name} runs on core ${resolved}`,
+           cmpVersion(resolved, '0.7.0') < 0
+               ? `Core ${resolved} guidance applies, not core 0.7. Do not read the langsys-typescript skill for this app.`
+               : undefined);
+    }
+}
+
+// ── Installed SDK skills vs the packages they describe ───────────────────────
+//
+// Skills are COPIED into the agent's folders, never linked, so an SDK upgrade
+// leaves the copy behind rather than silently rewriting a document an agent may
+// be working from. The cost of that choice is staleness, which is only
+// acceptable if it is visible — so this is the check that makes it visible.
+//
+// Three states, and the useful distinction is between the last two: a stale copy
+// is fixed by re-running the installer, an edited one means the copy is no longer
+// the SDK's text at all and re-installing would discard someone's changes.
+
+{
+    // The manifest follows the INSTALL SCOPE, not the project: `install --global`
+    // writes it under the home directory. Reading only the project path made the
+    // documented happy path lie — the installer's own closing line runs doctor
+    // with no argument, so after a global install it reported "no skill has been
+    // installed" and advised re-running the installer that had just succeeded.
+    //
+    // Checking both, project first, is also the right precedence: a project-scoped
+    // install is the more specific answer where both exist.
+    const manifestPath = [
+        join(root, '.langsys', 'skills.json'),
+        join(homedir(), '.langsys', 'skills.json'),
+    ].find(existsSync);
+    const manifest = manifestPath ? readJson(manifestPath) : null;
+    // Copies live beside their manifest, and the manifest records each one's path
+    // relative to that base — so resolve through it rather than rebuilding the
+    // path from `root`, which is what got this wrong in the first place.
+    const copyBase = manifestPath ? dirname(dirname(manifestPath)) : root;
+    const { skills, conflicts } = discoverSkills(root);
+
+    if (!manifest) {
+        if (skills.length) {
+            warn(`${skills.length} installed Langsys package(s) ship a skill, but none has been installed`,
+                 `Run \`npx langsys-skill install\` to copy ${skills.map((s) => s.name).join(', ')} ` +
+                 `into your agent's skill folder. Until then an agent reads this package's pinned ` +
+                 `guides, which may describe a different version.`);
+        } else {
+            info('No SDK skills installed, and no installed Langsys package ships one yet',
+                 'Guidance comes from this package\'s pinned guides. Check each against the installed version.');
+        }
+    } else {
+        for (const rec of manifest.skills ?? []) {
+            const live = skills.find((s) => s.name === rec.name);
+            if (!live) {
+                warn(`skill ${rec.name} is installed but its package is gone`,
+                     'The package was removed or moved. Re-run the installer to drop the orphaned copy.');
+                continue;
+            }
+            // Did the copy's own bytes change after it was copied?
+            const edited = Object.entries(rec.files ?? {}).filter(([f, want]) => {
+                const p = join(copyBase, rec.to ?? join('.langsys', 'skills', rec.name), f);
+                if (!existsSync(p)) return true;
+                return createHash('sha256').update(readFileSync(p)).digest('hex').slice(0, 16) !== want;
+            });
+
+            if (edited.length) {
+                warn(`skill ${rec.name}: ${edited.length} copied file(s) no longer match what was installed`,
+                     `Someone edited the copy in place (${edited.slice(0, 3).join(', ')}${edited.length > 3 ? ', …' : ''}). ` +
+                     `The SDK's own copy is authoritative; re-running the installer will discard these edits.`);
+            } else if (live.installed && rec.installed && live.installed !== rec.installed) {
+                warn(`skill ${rec.name} describes ${rec.installed}, but ${rec.package} ${live.installed} is installed`,
+                     'Re-run `npx langsys-skill install`. Until then the skill documents a version you do not have.');
+            } else if (live.declares && live.installed && cmpVersion(live.declares, live.installed) !== 0) {
+                warn(`skill ${rec.name} declares ${live.declares} but ships inside ${rec.package} ${live.installed}`,
+                     'The SDK shipped its skill out of step with itself. Trust the package, report the skill.');
+            } else {
+                ok(`skill ${rec.name}@${rec.declares} matches ${rec.package} ${live.installed}`);
+            }
+        }
+    }
+
+    for (const c of conflicts) {
+        warn(`two versions of ${c.name} are installed: ${c.shadowedBy.installed} and ${c.installed}`,
+             'Only the shallowest was copied. See the two-cores finding above.');
     }
 }
 

@@ -17,17 +17,48 @@ import { readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync, mkdi
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { typeSurface } from '../src/bin/drift-guard.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+/**
+ * Every finding ast-grep reported, whatever it exited with.
+ *
+ * The previous version returned '' on a zero exit, which silently made the
+ * helper blind to WARNING-severity rules: ast-grep exits 0 for those, so their
+ * findings were discarded and a test asserting one fires could never pass. That
+ * went unnoticed while every ast-grep rule happened to be an error — the gap
+ * appeared the moment one was not, which is the worst time to discover that a
+ * test helper cannot observe the thing under test.
+ *
+ * So: capture output on both paths and let each test say which severity it
+ * expects. `sgErrors` is for the assertions that mean "nothing is WRONG here",
+ * which must not be tripped by an advisory warning.
+ */
 const sg = (paths) => {
     try {
-        execFileSync('ast-grep', ['scan', '-c', join(root, 'src/lint/sgconfig.yml'), ...paths],
-            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-        return '';
+        return execFileSync('ast-grep', ['scan', '-c', join(root, 'src/lint/sgconfig.yml'), ...paths],
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) ?? '';
     } catch (e) {
         return (e.stdout ?? '') + (e.stderr ?? '');
     }
 };
+
+/**
+ * Only the ERROR-severity findings, for the "this code is correct" negatives.
+ *
+ * Keyed on the HEADER line, because that is the only line carrying the
+ * severity: ast-grep prints `warning[rule]: …` once and then a dozen lines of
+ * source context and note text. A per-line severity filter therefore kept the
+ * body of every warning and compared non-empty against '', so it failed on
+ * exactly the input it was written to tolerate.
+ *
+ * A warning is advisory by construction — `no-init-apiurl` cannot know which
+ * core an app resolved, so it fires on correct code on purpose. These negatives
+ * assert that nothing is WRONG, which is a claim about errors only.
+ */
+const sgErrors = (paths) => [...sg(paths).matchAll(/^error\[[^\]]+\]:.*$/gm)]
+    .map((m) => m[0])
+    .join('\n');
 const markup = (paths) => {
     try {
         return execFileSync('node', [join(root, 'src/lint/markup-check.mjs'), ...paths],
@@ -90,7 +121,7 @@ t('Upgrade now', 'Release 1.2 notes');          // mid-string period in a catego
 t('Read more', 'Note:');                        // colon is a plausible label
 t('Hello, {name}!', { name });                  // params object, not a category
 `, '.ts');
-    assert.equal(sg([file]), '');
+    assert.equal(sgErrors([file]), '');
 });
 
 test("NEGATIVE: the skill's own documented t() samples stay clean", () => {
@@ -142,7 +173,7 @@ test('flags HTML markup inside a t() phrase', () => {
 
 test('NEGATIVE: literal phrase with params is clean', () => {
     const { file } = fixture('g', "const x = t('Hello, {name}!', 'Greetings', { name });\n", '.ts');
-    assert.equal(sg([file]), '');
+    assert.equal(sgErrors([file]), '');
 });
 
 test('NEGATIVE: the canonical t() nested inside JSX markup is clean', () => {
@@ -155,32 +186,74 @@ export function C({ name, count }) {
   return <p>{t('Hello, {name}! You have {count} new messages.', 'Greetings', { name, count })}</p>;
 }
 `, '.tsx');
-    assert.equal(sg([file]), '');
+    assert.equal(sgErrors([file]), '');
 });
 
 test('NEGATIVE: a template literal outside a t() call is clean', () => {
     const { file } = fixture('i', 'const cls = `row-${n}`;\nconst x = t("Total", "Cart");\n', '.ts');
-    assert.equal(sg([file]), '');
+    assert.equal(sgErrors([file]), '');
 });
 
 test('NEGATIVE: correct argument order is clean', () => {
     const { file } = fixture('j', "const x = t('Hello, {name}!', 'UI', { name });\n", '.ts');
-    assert.equal(sg([file]), '');
+    assert.equal(sgErrors([file]), '');
 });
 
 test('NEGATIVE: a sentence containing a full stop is not a dot-key', () => {
     const { file } = fixture('k', "const x = t('Welcome back. Glad to see you.');\n", '.ts');
-    assert.equal(sg([file]), '');
+    assert.equal(sgErrors([file]), '');
 });
 
-test('NEGATIVE: real SDK example code stays clean', () => {
+/**
+ * The SDKs' own example code, linted with the rules we ship to users.
+ *
+ * This is a drift check on code THIS repo does not own, so it is baselined
+ * rather than asserted clean. Two reasons, and the first is the honest one:
+ *
+ *   - A finding here is a defect in another repo, on another release cadence.
+ *     Failing this suite until someone else ships cannot be acted on from here,
+ *     and a suite that is permanently red stops being read — taking the findings
+ *     it was right about with it.
+ *   - Deleting the check instead would lose a signal that has already paid for
+ *     itself: the Vue entry below is a live `apiUrl` bug in Vue's own Nuxt
+ *     example, found the first time this ran with the rule as a warning.
+ *
+ * So: anything NEW fails, and each known finding is recorded with where it was
+ * reported. Remove an entry when the upstream fix ships — a baseline nobody
+ * prunes becomes a list of things everyone has agreed to ignore.
+ */
+const KNOWN_UPSTREAM_LINT = [
+    {
+        rule: 'langsys-no-init-apiurl',
+        where: 'langsys-js-vue/example/nuxt/server/plugins/langsys.ts',
+        why: 'init({ apiUrl }) in a binding pinned to core ^0.6.5, where the field is silently '
+           + 'dropped — so that example talks to production, not LANGSYS_API_URL. Reported to the '
+           + 'Vue lane via the release-wave review.',
+    },
+    {
+        rule: 'langsys-no-template-literal-phrase',
+        where: 'langsys-js-react/example/Testbed.tsx',
+        why: 'An E2E harness that deliberately mints a phrase per run, living under example/ '
+           + 'where it reads as code to copy. The call is a true positive; the fix is to move '
+           + 'the testbed out of example/. Reported to the React lane.',
+    },
+];
+
+test('NEGATIVE: real SDK example code trips nothing new', () => {
     const targets = [
         join(root, '../langsys-js-react/example'),
         join(root, '../langsys-js-typescript/example'),
         join(root, '../langsys-js-vue/example'),
     ].filter(existsSync);
     if (targets.length === 0) return;   // siblings absent in CI
-    assert.equal(sg(targets), '', 'published SDK examples must not trip any rule');
+
+    const findings = [...sg(targets).matchAll(/^(?:error|warning)\[([^\]]+)\]/gm)].map((m) => m[1]);
+    const unexplained = findings.filter((id) =>
+        !KNOWN_UPSTREAM_LINT.some((k) => id.startsWith(k.rule)));
+
+    assert.deepEqual([...new Set(unexplained)], [],
+        'a published SDK example trips a rule that is not in KNOWN_UPSTREAM_LINT — either it is '
+        + 'a new upstream defect to report, or our rule regressed');
 });
 
 test('flags an object or array as a params value', () => {
@@ -207,7 +280,7 @@ export function C({ user, name, count, when }: any) {
   </>;
 }
 `, '.tsx');
-    assert.equal(sg([file]), '');
+    assert.equal(sgErrors([file]), '');
 });
 
 test('the ruleset loads without ANY ast-grep error', () => {
@@ -277,7 +350,7 @@ $client->translate('Total: {n}', null, null, null, ['n' => sprintf('%d', $x)]);
 $client->translate('Greeting', $this->getLocale(), "Cat$suffix");
 $log = sprintf('user %s did %s', $name, $action);
 `, '.php');
-    assert.equal(sg([file]), '');
+    assert.equal(sgErrors([file]), '');
 });
 
 test('PHP: catches every interpolation form, including deeply nested ones', () => {
@@ -303,7 +376,7 @@ $c->translate("esc \\n only");
 $c->translate("");
 $c->translate($phrase);
 `, '.php');
-    assert.equal(sg([file]), '');
+    assert.equal(sgErrors([file]), '');
 });
 
 test('PHP: NEGATIVE — the real SDK source stays clean', () => {
@@ -370,15 +443,67 @@ test('markup: only warns for prose with inline markup and no placeholder', () =>
     assert.equal(/^error/m.test(out), false, 'no placeholder present — must warn, not error');
 });
 
-test('markup: NEGATIVE — real SDK examples produce no errors', () => {
+/**
+ * Baselined for the same reason as KNOWN_UPSTREAM_LINT: these are defects in
+ * repos this one does not own. Prune an entry when its fix ships.
+ */
+const KNOWN_UPSTREAM_MARKUP = [
+    {
+        rule: 'markup-mustache-placeholder',
+        where: 'langsys-js-vue/example/App.vue, example/nuxt/app/pages/index.vue',
+        why: '{{ user.firstName }} inside <Translate>. Vue interpolates before Langsys captures '
+           + 'the text, so the registered phrase holds one specific user\'s name — a phrase per '
+           + 'visitor, in shared state. Vue is on core 0.6.5 and has no build transform, so there '
+           + 'is no version in which this is correct. Reported to the Vue lane.',
+    },
+    {
+        rule: 'phrase-contains-block',
+        where: 'langsys-js-svelte/src/routes/e2e/params/+page.svelte',
+        why: 'A <p> inside <Phrase>, in an e2e fixture that appears to measure exactly that case. '
+           + 'Left baselined rather than asserted: it is test input, not example code.',
+    },
+];
+
+test('markup: NEGATIVE — real SDK examples produce nothing new', () => {
     const targets = [
         join(root, '../langsys-js-vue/example'),
         join(root, '../langsys-js-react/example'),
         join(root, '../langsys-js-svelte/src/routes'),
     ].filter(existsSync);
     if (targets.length === 0) return;
+
     const out = markup(targets);
-    assert.match(out, /0 error\(s\)/, 'real SDK example code must produce no markup ERRORS');
+    const ids = [...out.matchAll(/^error \[([^\]]+)\]/gm)].map((m) => m[1]);
+    const unexplained = [...new Set(ids)].filter((id) =>
+        !KNOWN_UPSTREAM_MARKUP.some((k) => k.rule === id));
+
+    assert.deepEqual(unexplained, [],
+        'a published SDK example produces a markup ERROR not in KNOWN_UPSTREAM_MARKUP — either a '
+        + 'new upstream defect to report, or our check regressed');
+});
+
+test('markup: a Svelte project with langsysPreprocess() is not told its braces are wrong', () => {
+    // The rule's verdict inverts under Svelte 4's build transform, and a linter
+    // that errors on correct code gets bypassed — taking with it the cases where
+    // the same braces ARE a silent defect.
+    const dir = mkdtempSync(join(tmpdir(), 'langsys-xform-'));
+    writeFileSync(join(dir, 'package.json'), '{"name":"x"}');
+    writeFileSync(join(dir, 'A.svelte'),
+        '<script>import {Translate} from "langsys-js-svelte";</script>\n'
+        + '<Translate category="X"><p>Hello {name}</p></Translate>\n');
+
+    const without = markup([dir]);
+    assert.match(without, /1 error\(s\)/, 'no transform configured: braces are a silent defect');
+
+    writeFileSync(join(dir, 'svelte.config.js'),
+        "import { langsysPreprocess } from 'langsys-js-svelte/preprocess';\n"
+        + 'export default { preprocess: [langsysPreprocess()] };\n');
+
+    const withIt = markup([dir]);
+    assert.match(withIt, /0 error\(s\)/, 'transform configured: must not error on correct code');
+    assert.match(withIt, /langsysPreprocess/, 'and must say why it is advisory');
+
+    rmSync(dir, { recursive: true, force: true });
 });
 
 // ── Installer ────────────────────────────────────────────────────────────────
@@ -405,15 +530,33 @@ test('installer is idempotent and preserves user content', () => {
 });
 
 test('payload ships every documented track', () => {
+    // The ENTRY skill: only what is true in every language, plus the pinned
+    // guides for SDKs that do not yet ship a skill of their own. A track that
+    // moved into its SDK's package must NOT be here — a stale copy of it would
+    // outrank the real one, since this payload installs whether or not the SDK
+    // skill does.
     const required = [
-        'SKILL.md', 'detect.md', 'verify.md', 'troubleshooting.md',
-        'core/choosing-primitives.md', 'core/invariants.md', 'core/interpolation.md',
-        'core/init-config.md', 'core/categories.md', 'core/secrets.md',
-        'integrate/react.md', 'integrate/vue.md', 'integrate/svelte.md',
-        'integrate/vanilla-ts.md', 'integrate/php.md',
-        'ssr/nextjs.md', 'ssr/nuxt.md', 'ssr/sveltekit.md', 'ssr/php.md',
-        'migrate/_method.md', 'migrate/i18next.md', 'migrate/react-intl.md', 'migrate/vue-i18n.md',
+        'SKILL.md', 'preamble.md', 'choosing-sdks.md', 'sdk-versions.md',
+        'projects-and-keys.md', 'two-languages.md', 'categories.md', 'mcp.md',
+        'tools.md', 'verify.md',
+        'pinned/README.md', 'pinned/react.md', 'pinned/vue.md',
+        'pinned/ssr-nextjs.md', 'pinned/ssr-nuxt.md',
+        'pinned/js-server.md', 'pinned/laravel.md',
+        'pinned/core-0.6/choosing-primitives.md', 'pinned/core-0.6/invariants.md',
+        'pinned/core-0.6/interpolation.md', 'pinned/core-0.6/init-config.md',
+        'pinned/core-0.6/rendering-mode.md', 'pinned/core-0.6/verify.md',
+        'pinned/core-0.6/troubleshooting.md',
+        'pinned/migrate/_method.md', 'pinned/migrate/i18next.md',
+        'pinned/migrate/react-intl.md', 'pinned/migrate/vue-i18n.md',
     ];
+    const gone = [
+        'integrate/svelte.md', 'integrate/php.md', 'integrate/vanilla-ts.md',
+        'ssr/sveltekit.md', 'ssr/php.md', 'core/invariants.md', 'detect.md',
+    ];
+    for (const f of gone) {
+        assert.ok(!existsSync(join(root, 'src/skill', f)),
+            `${f} describes an SDK that now ships its own skill — it must not linger here`);
+    }
     for (const f of required) {
         const p = join(root, 'src/skill', f);
         assert.ok(existsSync(p), `missing ${f}`);
@@ -432,20 +575,31 @@ test('every mention of apiUrl carries its correction', () => {
     // form is REQUIRED here — the tracks exist partly to correct it — so the
     // invariant is that the correction always travels with it, not that the
     // string is absent.
-    for (const f of ['integrate/vue.md', 'core/init-config.md']) {
+    // Still required, and now version-SCOPED rather than absolute. `apiUrl`
+    // became a real init() field in core 0.7.0 — but the pinned guides describe
+    // core 0.6.5, where it is silently dropped, so inside pinned/ the correction
+    // must travel with every mention. The core>=0.7 story lives in the
+    // langsys-typescript skill, in its own repo, and is not this payload's to
+    // state.
+    for (const f of ['pinned/vue.md', 'pinned/core-0.6/init-config.md']) {
         const txt = readFileSync(join(root, 'src/skill', f), 'utf8');
         if (!/apiUrl/.test(txt)) continue;
         assert.match(txt, /not a (real )?config field|does not exist|is NOT a config field/i,
-            `${f} mentions apiUrl without stating it is not a config field`);
+            `${f} mentions apiUrl without stating it is not a config field at core 0.6.x`);
         assert.match(txt, /setBaseUrl/,
-            `${f} must document setBaseUrl() as the working mechanism`);
+            `${f} must document setBaseUrl() as the working mechanism below 0.7`);
     }
+    // And the lint rule must not call it an error, because it is correct on 0.7.
+    const rule = readFileSync(join(root, 'src/lint/rules/no-init-apiurl.typescript.yml'), 'utf8');
+    assert.match(rule, /^severity: warning$/m,
+        'apiUrl is valid on core >= 0.7, so an error here fires on correct code');
+    assert.match(rule, /0\.7/, 'the rule must name the version boundary it cannot see');
 });
 
 test('every track documents the two-mode detectPreferredLocale guard', () => {
     // The `|| 'en-US'` idiom is wrong in a way that survives testing, so any
     // track showing locale fallback must show the explicit guard instead.
-    for (const f of ['integrate/vue.md', 'core/init-config.md', 'core/invariants.md']) {
+    for (const f of ['pinned/vue.md', 'pinned/core-0.6/init-config.md', 'pinned/core-0.6/invariants.md']) {
         const txt = readFileSync(join(root, 'src/skill', f), 'utf8');
         if (!/detectPreferredLocale/.test(txt)) continue;
         assert.match(txt, /supported\.includes\(detected\)/,
@@ -1074,17 +1228,18 @@ test('the rendering-mode decision is routed to before any SSR track', () => {
     // CURRENT translations in crawlable HTML, so a realtime translation manager
     // behind a prerendered site is indexed as a build-time snapshot. Living in
     // one framework's track would leave the other three teaching the trap.
-    const core = join(root, 'src/skill/core/rendering-mode.md');
-    assert.ok(existsSync(core), 'core/rendering-mode.md must exist');
+    const core = join(root, 'src/skill/pinned/core-0.6/rendering-mode.md');
+    assert.ok(existsSync(core), 'the rendering-mode decision must still be reachable');
     const txt = readFileSync(core, 'utf8');
     assert.match(txt, /snapshot/i, 'must name the staleness, not just prefer SSR');
     assert.match(txt, /ready gate|loader/i, 'must give apps the client-only answer');
 
-    for (const f of ['ssr/nextjs.md', 'ssr/nuxt.md', 'ssr/php.md', 'ssr/sveltekit.md']) {
+    // Only the SSR tracks still in this payload. The SvelteKit and PHP ones moved
+    // into their SDKs' own skills, which own that routing now.
+    for (const f of ['pinned/ssr-nextjs.md', 'pinned/ssr-nuxt.md']) {
         const t = readFileSync(join(root, 'src/skill', f), 'utf8');
         assert.match(t, /rendering-mode\.md/, `${f} must route to the decision first`);
     }
-    assert.match(readFileSync(join(root, 'src/skill/SKILL.md'), 'utf8'), /rendering-mode\.md/);
 });
 
 test('scan explains WHY prerendering is a trap, not just that it was detected', () => {
@@ -1109,8 +1264,8 @@ test('the MCP doc states what it unlocks and stays optional', () => {
     // prerequisite: someone who already has a project ID and key needs none of it,
     // and stalling an integration on an optional convenience is worse than the
     // copy-paste it removes.
-    const doc = join(root, 'src/skill/core/mcp.md');
-    assert.ok(existsSync(doc), 'core/mcp.md must exist');
+    const doc = join(root, 'src/skill/mcp.md');
+    assert.ok(existsSync(doc), 'mcp.md must exist');
     const txt = readFileSync(doc, 'utf8');
     assert.match(txt, /--scope=user/, 'must recommend user scope');
     assert.match(txt, /mcp\.langsys\.dev\/mcp/, 'must carry the endpoint');
@@ -1118,7 +1273,7 @@ test('the MCP doc states what it unlocks and stays optional', () => {
     assert.match(txt, /Do not stall/i, 'must state that it is optional');
 
     const skill = readFileSync(join(root, 'src/skill/SKILL.md'), 'utf8');
-    assert.match(skill, /core\/mcp\.md/, 'preflight must route to it');
+    assert.match(skill, /\(\.\/mcp\.md\)/, 'preflight must route to it');
     assert.match(skill, /--scope=user/, 'the add command must be in the router');
 });
 
@@ -1550,8 +1705,456 @@ test('skill: every internal markdown link resolves IN THE INSTALLED LAYOUT', () 
     }
     // CONTROL: without this, "all links resolve" passes vacuously on zero links.
     assert.ok(checked > 30, `expected many internal links, checked ${checked}`);
-    assert.ok(existsSync(join(proj, '.langsys/skill/core/server-sdk.md')), 'the new document must install');
-    assert.match(readFileSync(join(proj, '.langsys/skill/SKILL.md'), 'utf8'), /server-sdk\.md/,
-        'and must be reachable from the router');
+    // CONTROL 2: a nested document must actually land, and the router must reach
+    // the pinned set — the restructure moved every guide one level deeper, which
+    // is exactly the shape of change that breaks an installed layout while the
+    // source tree still looks right.
+    assert.ok(existsSync(join(proj, '.langsys/skill/pinned/core-0.6/invariants.md')),
+        'a nested pinned document must install');
+    assert.match(readFileSync(join(proj, '.langsys/skill/SKILL.md'), 'utf8'), /pinned\//,
+        'and the pinned set must be reachable from the router');
     rmSync(home, { recursive: true, force: true });
+});
+
+// ── The skill tree: per-SDK skills, the manifest, and the cross-repo contract ──
+//
+// 0.3.0 makes this package the ENTRY skill plus the installer for the skills
+// that ship inside each SDK. Three new failure modes come with that, and each
+// one is silent without a test:
+//
+//   - an SDK ships a skill and the installer does not copy it, so the agent
+//     reads this package's pinned guide for a version it does not describe;
+//   - a copy goes stale or is edited, and nothing says so;
+//   - a rename here breaks a link in an SDK skill that is already published and
+//     cannot be edited.
+
+const install = (dir, extra = []) => {
+    try {
+        return execFileSync('node', [join(root, 'src/bin/install.mjs'), `--dir=${dir}`, '--host=generic', ...extra],
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) {
+        return (e.stdout ?? '') + (e.stderr ?? '');
+    }
+};
+
+/** A project with one Langsys package that ships a skill. */
+const projectWithSkill = ({ pkg = 'langsys-js-typescript', version = '0.7.0', declares = version,
+                            name = 'langsys-typescript', nested = null } = {}) => {
+    const dir = mkdtempSync(join(tmpdir(), 'langsys-tree-'));
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'app' }));
+    const put = (base, p, v, n) => {
+        mkdirSync(join(base, 'skill'), { recursive: true });
+        writeFileSync(join(base, 'package.json'), JSON.stringify({ name: p, version: v }));
+        writeFileSync(join(base, 'skill', 'SKILL.md'),
+            `---\nname: ${n}\ndescription: test\nmetadata:\n  package: ${p}\n  version: ${declares}\n---\n\n# ${n}\n\nbody\n`);
+        writeFileSync(join(base, 'skill', 'extra.md'), '# extra\n\nmore\n');
+    };
+    put(join(dir, 'node_modules', pkg), pkg, version, name);
+    if (nested) {
+        put(join(dir, 'node_modules', nested.parent, 'node_modules', pkg), pkg, nested.version, name);
+        writeFileSync(join(dir, 'node_modules', nested.parent, 'package.json'),
+            JSON.stringify({ name: nested.parent, version: '0.6.7' }));
+    }
+    return dir;
+};
+
+test('tree: the installer copies an SDK\'s own skill and records what it copied', () => {
+    const dir = projectWithSkill();
+    const out = install(dir);
+
+    assert.match(out, /SDK skills: langsys-typescript@0\.7\.0/, 'the install must say what it found');
+    for (const f of ['SKILL.md', 'extra.md']) {
+        assert.ok(existsSync(join(dir, '.langsys/skills/langsys-typescript', f)),
+            `${f} must be copied, not just SKILL.md`);
+    }
+
+    const m = JSON.parse(readFileSync(join(dir, '.langsys/skills.json'), 'utf8'));
+    const rec = m.skills.find((s) => s.name === 'langsys-typescript');
+    assert.ok(rec, 'the manifest must record the skill');
+    assert.equal(rec.package, 'langsys-js-typescript');
+    assert.equal(rec.declares, '0.7.0');
+    assert.equal(rec.installed, '0.7.0');
+    // Per-file hashes are what let doctor tell "stale" from "edited". Without
+    // them an edited copy is indistinguishable from an up-to-date one.
+    assert.equal(Object.keys(rec.files).length, 2, 'every copied file needs a hash');
+
+    rmSync(dir, { recursive: true, force: true });
+});
+
+test('tree: a project with no SDK skills says so rather than passing quietly', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'langsys-tree-'));
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'app' }));
+    const out = install(dir);
+    // "none found" and "all installed" must not look the same: the first means
+    // the agent falls back to this package's pinned guides, which is a different
+    // situation to reason about.
+    assert.match(out, /SDK skills: none found/, 'absence must be stated, not implied');
+    assert.match(out, /pinned guides/, 'and it must say what the agent will read instead');
+    rmSync(dir, { recursive: true, force: true });
+});
+
+test('tree: two versions of one core are reported as a project hazard', () => {
+    const dir = projectWithSkill({ nested: { parent: 'langsys-js-react', version: '0.6.5' } });
+    const out = install(dir);
+
+    assert.match(out, /Two versions of langsys-typescript/, 'the conflict must be named');
+    assert.match(out, /0\.7\.0/);
+    assert.match(out, /0\.6\.5/);
+    assert.match(out, /separate module instances/, 'and explained as a runtime hazard, not a tool quirk');
+
+    const m = JSON.parse(readFileSync(join(dir, '.langsys/skills.json'), 'utf8'));
+    assert.equal(m.conflicts.length, 1, 'and recorded for doctor');
+    rmSync(dir, { recursive: true, force: true });
+});
+
+test('tree: doctor separates a matching skill from a stale one and an edited one', () => {
+    const dir = projectWithSkill();
+    install(dir);
+    const doctor = (d) => {
+        try {
+            return execFileSync('node', [join(root, 'src/bin/doctor.mjs'), d],
+                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        } catch (e) { return (e.stdout ?? '') + (e.stderr ?? ''); }
+    };
+
+    assert.match(doctor(dir), /skill langsys-typescript@0\.7\.0 matches/, 'a fresh copy must read as matching');
+
+    // STALE: the package moved on, the copy did not.
+    const pj = join(dir, 'node_modules/langsys-js-typescript/package.json');
+    writeFileSync(pj, JSON.stringify({ name: 'langsys-js-typescript', version: '0.7.1' }));
+    const stale = doctor(dir);
+    assert.match(stale, /describes 0\.7\.0, but langsys-js-typescript 0\.7\.1 is installed/);
+    assert.match(stale, /Re-run/, 'stale must name its fix');
+
+    // EDITED: the copy is no longer the SDK's text. Re-installing would discard
+    // the edit, so this must NOT be reported as merely stale.
+    writeFileSync(join(dir, '.langsys/skills/langsys-typescript/extra.md'), '# extra\n\ntampered\n');
+    const edited = doctor(dir);
+    assert.match(edited, /no longer match what was installed/);
+    assert.match(edited, /will discard these edits/, 'edited must warn before the fix destroys work');
+
+    rmSync(dir, { recursive: true, force: true });
+});
+
+test('tree: the preamble source exists, and the entry skill does not carry a copy', () => {
+    const src = readFileSync(join(root, 'src/skill/preamble.md'), 'utf8');
+    assert.match(src, /<!-- langsys-skill-preamble:start -->/);
+    assert.match(src, /<!-- langsys-skill-preamble:end -->/);
+    assert.match(src, /docs\.langsys\.dev\/skill\/langsys\//, 'the template must embed the entry skill URL');
+    assert.match(src, /npx langsys-skill install/, 'and the fallback command');
+
+    // The preamble says "read `langsys` first". The entry skill IS langsys, so a
+    // copy here would tell an agent already reading it to go and read it.
+    const skill = readFileSync(join(root, 'src/skill/SKILL.md'), 'utf8');
+    assert.ok(!/langsys-skill-preamble:start/.test(skill),
+        'the entry skill must not carry the preamble it is the destination of');
+});
+
+test('tree: the contract check catches a drifted preamble and a dangling inbound link', () => {
+    // `--source` so this asserts OUR checker against OUR fixture.
+    //
+    // The aggregate run also walks sibling working trees, which made two things
+    // wrong at once: a drift in another repo turned this repo's suite red for a
+    // change nobody here can make, and a failing assertion mid-test left the
+    // fixture on disk, so every later `npm run contract` and the CI step
+    // reported a violation with no connection to the code. Hence --source, and
+    // hence try/finally.
+    const contract = (sourceDir) => {
+        try {
+            return { out: execFileSync('node',
+                [join(root, 'src/bin/skill-contract.mjs'), `--source=${sourceDir}`],
+                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), code: 0 };
+        } catch (e) { return { out: (e.stdout ?? '') + (e.stderr ?? ''), code: e.status }; }
+    };
+
+    const sdk = mkdtempSync(join(tmpdir(), 'langsys-fixture-sdk-'));
+    try {
+        const canonical = readFileSync(join(root, 'src/skill/preamble.md'), 'utf8')
+            .match(/<!-- langsys-skill-preamble:start -->[\s\S]*?<!-- langsys-skill-preamble:end -->/)[0];
+
+        // 1. Good copy, and a link with sentence-ending punctuation — the shape
+        //    the preamble itself uses, and the one a greedy URL match gets wrong.
+        writeFileSync(join(sdk, 'SKILL.md'),
+            `---\nname: langsys-fixture\n---\n\n${canonical}\n\nSee https://docs.langsys.dev/skill/langsys/projects-and-keys.md.\n`);
+        let r = contract(sdk);
+        assert.equal(r.code, 0, 'a correct copy and a punctuated link must pass');
+        assert.match(r.out, /0 violation/);
+
+        // 2. Drifted preamble.
+        writeFileSync(join(sdk, 'SKILL.md'), `---\nname: langsys-fixture\n---\n\n${canonical.replace('never skip a step', 'skip as you like')}\n`);
+        r = contract(sdk);
+        assert.equal(r.code, 1, 'a drifted copy must fail');
+        assert.match(r.out, /differs from this package's source/);
+
+        // 3. A link into a path this payload does not have. This is the one that
+        //    matters most: the SDK skill is published and cannot be edited, so
+        //    the rename has to be caught here.
+        writeFileSync(join(sdk, 'SKILL.md'),
+            `---\nname: langsys-fixture\n---\n\n${canonical}\n\nSee https://docs.langsys.dev/skill/langsys/renamed-away.md\n`);
+        r = contract(sdk);
+        assert.equal(r.code, 1, 'a dangling inbound link must fail');
+        assert.match(r.out, /does not exist in src\/skill/);
+
+        // 4. Nothing to check must NOT read as a pass, in either output format.
+        //    The JSON branch used to exit 0 here, which is the green-run-that-
+        //    verified-nothing this whole check exists to prevent.
+        const empty = mkdtempSync(join(tmpdir(), 'langsys-empty-'));
+        try {
+            assert.equal(contract(empty).code, 2, 'zero sources must exit 2, not 0');
+            let code = 0;
+            try {
+                execFileSync('node', [join(root, 'src/bin/skill-contract.mjs'), '--json', `--source=${empty}`],
+                    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+            } catch (e) { code = e.status; }
+            assert.equal(code, 2, '--json must exit 2 on zero sources too');
+        } finally {
+            rmSync(empty, { recursive: true, force: true });
+        }
+    } finally {
+        // Unconditional: a fixture left in the tree by a failing assertion makes
+        // every later run report a violation that has nothing to do with the code.
+        rmSync(sdk, { recursive: true, force: true });
+    }
+});
+
+test('tree: every pinned guide names the version it was verified against', () => {
+    // The folder's whole purpose. A guide without a pin reads as current, and
+    // "current" is exactly what it is not.
+    const dir = join(root, 'src/skill/pinned');
+    const walk = (d, out = []) => {
+        for (const e of readdirSync(d, { withFileTypes: true })) {
+            const p = join(d, e.name);
+            if (e.isDirectory()) walk(p, out);
+            else if (e.name.endsWith('.md') && e.name !== 'README.md') out.push(p);
+        }
+        return out;
+    };
+    for (const f of walk(dir)) {
+        const txt = readFileSync(f, 'utf8');
+        assert.match(txt, /\*\*Pinned guide\.\*\*/, `${f} must carry the pinned banner`);
+        assert.match(txt, /\d+\.\d+(\.\d+)?/, `${f} must name a version`);
+    }
+});
+
+test('tree: the payload tells agents never to add the core in a React or Vue app', () => {
+    // Measured: React 0.6.7 + a direct core 0.7.0 install yields TWO cores, two
+    // catalogs and two registration queues, with nothing erroring. An agent
+    // reaching for a 0.7 feature in a React app will try exactly this.
+    const txt = readFileSync(join(root, 'src/skill/sdk-versions.md'), 'utf8');
+    assert.match(txt, /never install `langsys-js-typescript` yourself/i);
+    assert.match(txt, /0\.6\.5/, 'must name the core React and Vue actually resolve');
+    assert.match(txt, /separate module instances|two cores|Two cores/i);
+    assert.match(txt, /Never route a React or Vue app to `langsys-typescript`/i,
+        'the core skill describes 0.7 and must not be routed to from a 0.6 app');
+});
+
+// ── Review fixes: each of these fails without its fix ─────────────────────────
+
+const doctorOn = (d, extra = []) => {
+    try {
+        return execFileSync('node', [join(root, 'src/bin/doctor.mjs'), d, ...extra],
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) { return (e.stdout ?? '') + (e.stderr ?? ''); }
+};
+
+test('tree: uninstalling an SDK removes its copied skill', () => {
+    // Without pruning the copy is wrong in BOTH directions at once: the agent
+    // can still read a skill for a package the project does not have, and doctor
+    // cannot see it, because its orphan check walks the manifest and the manifest
+    // no longer lists it. Simultaneously live and invisible is the exact inverse
+    // of "a copy goes stale visibly", which the copy-not-link design rests on.
+    const dir = projectWithSkill();
+    install(dir);
+    const copied = join(dir, '.langsys/skills/langsys-typescript');
+    assert.ok(existsSync(copied), 'precondition: the skill was copied');
+
+    rmSync(join(dir, 'node_modules/langsys-js-typescript'), { recursive: true, force: true });
+    const out = install(dir);
+
+    assert.ok(!existsSync(copied),
+        'the copy must be removed when its package is gone — a manifest with no entry for it '
+        + 'means doctor can never report it');
+    assert.match(out, /no longer installed/, 'and the removal must be reported, not silent');
+
+    const m = JSON.parse(readFileSync(join(dir, '.langsys/skills.json'), 'utf8'));
+    assert.deepEqual(m.skills, [], 'and the manifest must agree');
+    rmSync(dir, { recursive: true, force: true });
+});
+
+test('tree: pruning only removes copies this installer recorded', () => {
+    // The manifest is the record of what we wrote, so it is the only safe licence
+    // to delete. A directory under skills/ that we never claimed could be someone
+    // else's skill, and guessing from the name would eventually delete one.
+    const dir = projectWithSkill();
+    install(dir);
+    const theirs = join(dir, '.langsys/skills/somebody-elses-skill');
+    mkdirSync(theirs, { recursive: true });
+    writeFileSync(join(theirs, 'SKILL.md'), '# not ours\n');
+
+    rmSync(join(dir, 'node_modules/langsys-js-typescript'), { recursive: true, force: true });
+    install(dir);
+
+    assert.ok(existsSync(join(theirs, 'SKILL.md')),
+        'a skill directory this installer never wrote must survive a prune');
+    rmSync(dir, { recursive: true, force: true });
+});
+
+test('tree: doctor finds the manifest a --global install wrote', () => {
+    // install --global writes the manifest under HOME, and the installer's own
+    // closing line runs doctor with no argument — so reading only the project
+    // path made the documented happy path report "no skill has been installed"
+    // and advise re-running the installer that had just succeeded.
+    const home = mkdtempSync(join(tmpdir(), 'langsys-home-'));
+    const proj = projectWithSkill();
+    try {
+        execFileSync('node', [join(root, 'src/bin/install.mjs'), '--global', '--host=generic'],
+            { encoding: 'utf8', cwd: proj, env: { ...process.env, HOME: home },
+              stdio: ['ignore', 'pipe', 'pipe'] });
+        assert.ok(existsSync(join(home, '.langsys/skills.json')), 'precondition: manifest is under HOME');
+
+        const out = execFileSync('node', [join(root, 'src/bin/doctor.mjs'), proj],
+            { encoding: 'utf8', env: { ...process.env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+
+        assert.match(out, /skill langsys-typescript@0\.7\.0 matches/,
+            'doctor must resolve the globally-installed manifest');
+        assert.ok(!/ship a skill, but none has been installed/.test(out),
+            'and must not advise re-running an install that already succeeded');
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+        rmSync(proj, { recursive: true, force: true });
+    }
+});
+
+test('tree: doctor checks the pins that are not npm bindings, and never stays silent', () => {
+    // PINNED carried entries for langsys-js-server and the Laravel package that
+    // nothing read: the only lookup sat inside a loop over four hardcoded binding
+    // names. So the two packages whose guides claim an exact version got no check
+    // at all, while those guides ship as authoritative.
+    const dir = mkdtempSync(join(tmpdir(), 'langsys-pins-'));
+    try {
+        writeFileSync(join(dir, 'package.json'), JSON.stringify({
+            name: 'app', dependencies: { 'langsys-js-server': '^0.1.0' },
+        }));
+        mkdirSync(join(dir, 'node_modules/langsys-js-server'), { recursive: true });
+        writeFileSync(join(dir, 'node_modules/langsys-js-server/package.json'),
+            JSON.stringify({ name: 'langsys-js-server', version: '0.2.0' }));
+
+        const out = doctorOn(dir);
+        assert.match(out, /langsys-js-server@0\.2\.0 is outside the pinned guide \(0\.1\.0\)/,
+            'a pinned package that is not a binding must still be checked');
+        assert.match(out, /README/, 'and must be routed to the package README');
+
+        // Laravel, which lives in composer and whose resolved version is in the lock.
+        writeFileSync(join(dir, 'composer.json'), JSON.stringify({
+            require: { 'langsys/langsys-php-laravel': '^1.0' },
+        }));
+        writeFileSync(join(dir, 'composer.lock'), JSON.stringify({
+            packages: [{ name: 'langsys/langsys-php-laravel', version: 'v1.0.0' }],
+        }));
+        assert.match(doctorOn(dir), /langsys-php-laravel@1\.0\.0 matches the pinned guide/,
+            'the Laravel pin must be read from the lock file');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('tree: a package with no pinned guide here is told so, not met with silence', () => {
+    // Dropping the old `ok()` left bindings absent from PINNED with no output at
+    // all, and the nested-core loop skips the core itself — so a vanilla-TS
+    // project learned nothing about which guidance applies. Silence is the state
+    // every check in that file exists to prevent, and the one that looks like a pass.
+    const dir = projectWithSkill();
+    try {
+        writeFileSync(join(dir, 'package.json'), JSON.stringify({
+            name: 'app', dependencies: { 'langsys-js-typescript': '^0.7.0' },
+        }));
+        const out = doctorOn(dir);
+        assert.match(out, /langsys-js-typescript@0\.7\.0: no pinned guide here/);
+        assert.match(out, /read its own skill/i, 'and must say where guidance comes from instead');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('tree: a non-UTF-8 asset in an SDK skill survives the copy', () => {
+    // filesUnder copies every file, not just markdown, so a diagram or image goes
+    // with it. Reading those as UTF-8 replaces bytes with U+FFFD, and since the
+    // manifest hashes raw bytes the copy could never match — doctor would report
+    // it as EDITED forever, on a file nobody touched, and advise a re-install that
+    // cannot fix it.
+    const dir = projectWithSkill();
+    try {
+        const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xd8, 0x00, 0x01]);
+        writeFileSync(join(dir, 'node_modules/langsys-js-typescript/skill/diagram.png'), png);
+        install(dir);
+
+        const copy = readFileSync(join(dir, '.langsys/skills/langsys-typescript/diagram.png'));
+        assert.ok(copy.equals(png), 'the asset must be copied byte for byte');
+        assert.ok(!/no longer match what was installed/.test(doctorOn(dir)),
+            'and must not read as edited on a copy nobody touched');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('drift: the type surface follows re-exports under either quote style', () => {
+    // The regression this guards is the one that prompted the fix: 0.7.0's build
+    // moved TFunction into a content-hashed chunk, the guard read only the entry
+    // file, and it reported the t() signature as changed when it was identical.
+    //
+    // Quote style is a bundler formatting setting, not an API fact. Keying on one
+    // would put that false alarm a config change away — and it would come back
+    // naming the most load-bearing claim in the skill, which is the fastest way
+    // to teach a reader to ignore the guard.
+    const mk = (quote) => {
+        const d = mkdtempSync(join(tmpdir(), 'langsys-dts-'));
+        mkdirSync(join(d, 'dist'), { recursive: true });
+        writeFileSync(join(d, 'dist/index.d.ts'),
+            `import { K as TFunction } from ${quote}./pure-ABC123.js${quote};\nexport { TFunction };\n`);
+        writeFileSync(join(d, 'dist/pure-ABC123.d.ts'),
+            'interface TFunction {\n  <P extends string>(phrase: P, category: string, ...args: TArgs<P>): string;\n}\n');
+        return d;
+    };
+
+    for (const quote of ["'", '"']) {
+        const d = mk(quote);
+        try {
+            const surface = typeSurface(d);
+            assert.match(surface, /\(phrase: P, category: string/,
+                `a re-export written with ${quote} must be followed`);
+        } finally {
+            rmSync(d, { recursive: true, force: true });
+        }
+    }
+
+    // CONTROL: the walk must not claim to have found a type that is absent, or
+    // the assertion above would pass on an empty surface.
+    const bare = mkdtempSync(join(tmpdir(), 'langsys-dts-'));
+    try {
+        mkdirSync(join(bare, 'dist'), { recursive: true });
+        writeFileSync(join(bare, 'dist/index.d.ts'), 'export {};\n');
+        assert.doesNotMatch(typeSurface(bare), /\(phrase: P, category: string/);
+    } finally {
+        rmSync(bare, { recursive: true, force: true });
+    }
+});
+
+test('lint: a correct-code negative tolerates a WARNING but not an error', () => {
+    // `no-init-apiurl` is a warning precisely because it cannot see which core an
+    // app resolved, so it fires on code that is correct on 0.7. The negatives mean
+    // "nothing here is wrong", which is a claim about errors — so they must read
+    // an advisory warning as clean, or the first such rule turns a dozen
+    // correct-code assertions red.
+    //
+    // This also pins the helper: severity appears only on the HEADER line, with a
+    // dozen lines of source context and note text after it, so a per-line filter
+    // keeps the body and compares non-empty against ''.
+    const warnOnly = fixture('w', "LangsysApp.init({ projectid: 'p', apiUrl: 'http://x' });\n", '.ts');
+    const raw = sg([warnOnly.file]);
+    assert.match(raw, /^warning\[langsys-no-init-apiurl/m, 'precondition: this fixture warns');
+    assert.ok(raw.split('\n').length > 3, 'precondition: a finding spans several lines');
+    assert.equal(sgErrors([warnOnly.file]), '', 'a warning alone must read as clean');
+
+    const alsoWrong = fixture('e', "const x = t('Based on <strong>5</strong> reviews');\n", '.ts');
+    assert.match(sgErrors([alsoWrong.file]), /^error\[/m, 'but an error must still come through');
 });

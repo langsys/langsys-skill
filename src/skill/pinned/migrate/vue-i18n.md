@@ -1,6 +1,10 @@
 # Migrating from vue-i18n
 
-Read [_method.md](./_method.md) first, and [integrate/vue.md](../integrate/vue.md) for the Vue-specific reactivity rules.
+> **Pinned guide.** The codemod route, for base SDK core **0.6.x** only. On core 0.7 the `langsys-typescript` skill's `legacyKeys` path replaces this.
+> A project on another version reads that package's own README instead —
+> [why](../README.md).
+
+Read [_method.md](./_method.md) first, and [integrate/vue.md](../vue.md) for the Vue-specific reactivity rules.
 
 ## Detect
 
@@ -135,7 +139,7 @@ Locale in Pinia already? Use `refToLocaleSource(localeRef)` rather than creating
 
 ## Verify
 
-Beyond [verify.md](../verify.md):
+Beyond [verify.md](../core-0.6/verify.md):
 
 - [ ] `t.value(...)` in script, `t(...)` in templates — check every migrated `setup()`
 - [ ] No positional `{0}` placeholders left

@@ -1,5 +1,9 @@
 # Langsys invariants
 
+> **Pinned guide.** Base SDK `langsys-js-typescript@0.6.5` — the core the React and Vue bindings install. **Not** core 0.7; for that read the `langsys-typescript` skill.
+> A project on another version reads that package's own README instead —
+> [why](../README.md).
+
 Rules that hold across every SDK. Most exist because an i18next/react-intl habit produces broken Langsys code that **looks correct in the base language**.
 
 ---
@@ -110,7 +114,7 @@ Writing `{name}` in markup fails silently — the compiler eats it before the SD
 - **Write key** — registers new phrases and content blocks as your app runs. Development only.
 - **Read-only key** — fetches translations only.
 
-The SDK detects which it has automatically. Never commit either. Match the env prefix to your bundler — see [secrets.md](./secrets.md).
+The SDK detects which it has automatically. Never commit either. Match the env prefix to your bundler — see [secrets.md](../../projects-and-keys.md).
 
 ---
 
@@ -214,7 +218,7 @@ framework reconciliation.
 
 ## 7. Seed translations during SSR
 
-If the app server-renders, pre-fetch on the server and pass `initialTranslations` + `initialTranslationsLocale`. Without them you get a duplicate fetch on hydration and a flash of untranslated content. See the [ssr/](../ssr/) tracks.
+If the app server-renders, pre-fetch on the server and pass `initialTranslations` + `initialTranslationsLocale`. Without them you get a duplicate fetch on hydration and a flash of untranslated content. See the [ssr/](../) tracks.
 
 ---
 

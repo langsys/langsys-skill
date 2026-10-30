@@ -1,9 +1,13 @@
 # SSR — Nuxt
 
+> **Pinned guide.** Goes with [vue.md](./vue.md): `langsys-js-vue@0.2.1`, base SDK core **0.6.5**.
+> A project on another version reads that package's own README instead —
+> [why](./README.md).
+
 
 > ### ⛔ Don't seed the catalog store during SSR here — unsafe in practice
 >
-> [core/rendering-mode.md](../core/rendering-mode.md) describes seeding `sTranslations` +
+> [core/rendering-mode.md](./core-0.6/rendering-mode.md) describes seeding `sTranslations` +
 > `currentlyLoadedLocale` during the render so `t()` server-renders. **That is recommended on
 > SvelteKit and not recommended here.** `langsys-js-vue` does re-export both settable signals, so the
 > code will look like it works — and it does, until two requests overlap.
@@ -54,19 +58,19 @@
 > app fetches, took that exact position from 0/80 to 67/80. And every routed page that awaits
 > anything is unsafe regardless, which is most real pages.
 >
-> **Recommend request scoping** — [`langsys-js-server`](../core/server-sdk.md), or the pure
+> **Recommend request scoping** — [`langsys-js-server`](./js-server.md), or the pure
 > catalog function (§ below), which holds no module state and is immune by construction.
 > Not because Nuxt forbids the seed, but because a Nuxt app that never awaits above its
 > translated reads is not a Nuxt app anyone writes.
 
 > **Condition 3 (reset on failure) applies here regardless of renderer.** See "the failure
-> path must reset" in [core/rendering-mode.md](../core/rendering-mode.md). It bit under the
+> path must reset" in [core/rendering-mode.md](./core-0.6/rendering-mode.md). It bit under the
 > *synchronous* renderer too, so passing the concurrency test above buys no protection from it.
 
 
-Read [integrate/vue.md](../integrate/vue.md) first. This adds the server half.
+Read [integrate/vue.md](./vue.md) first. This adds the server half.
 
-> **Decide the rendering mode first: [core/rendering-mode.md](../core/rendering-mode.md).**
+> **Decide the rendering mode first: [core/rendering-mode.md](./core-0.6/rendering-mode.md).**
 > Public site → SSR; app behind a login → client-only with a ready gate, and skip this track.
 >
 > **Know what SSR does and does not give you here.** `t()`, `<Phrase>` and `<Translate>`
@@ -76,7 +80,7 @@ Read [integrate/vue.md](../integrate/vue.md) first. This adds the server half.
 > This track buys one catalog fetch instead of two, no flash after hydration, and a
 > *current* catalog per request. For text a crawler or a social scraper must read,
 > resolve it from the fetched catalog directly — see
-> [core/rendering-mode.md](../core/rendering-mode.md#resolve-crawler-visible-text-through-a-pure-catalog-function).
+> [core/rendering-mode.md](./core-0.6/rendering-mode.md#resolve-crawler-visible-text-through-a-pure-catalog-function).
 
 > ## For crawler-visible translated body copy, use the catalog function or `langsys-js-server`
 >
@@ -86,7 +90,7 @@ Read [integrate/vue.md](../integrate/vue.md) first. This adds the server half.
 > language during SSR.
 >
 > **`langsys-js-server` puts a request-scoped catalog on the server so `t()` resolves during the
-> render.** Read [core/server-sdk.md](../core/server-sdk.md) before choosing between it and the
+> render.** Read [core/server-sdk.md](./js-server.md) before choosing between it and the
 > pure catalog function.
 >
 > `<Phrase>` and `<Translate>` are still client-only in its 0.1.0 — and **nothing signals that for

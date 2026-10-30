@@ -1,5 +1,9 @@
 # Migration methodology
 
+> **Pinned guide.** The codemod route, for base SDK core **0.6.x** only. On core 0.7 the `langsys-typescript` skill's `legacyKeys` path replaces this.
+> A project on another version reads that package's own README instead —
+> [why](../README.md).
+
 Moving a project from i18next / react-intl / vue-i18n / gettext onto Langsys.
 
 **Read this before any library-specific track.** The phases matter more than the syntax mapping — phase 2 is where naive migrations silently corrupt an application.
@@ -80,7 +84,7 @@ t(ERROR_PHRASES[code], 'Errors');
 
 Derive a category per call site: key namespace first (`checkout.*` → `Checkout`), file path as fallback.
 
-**Do not map namespaces 1:1.** That recreates the duplication Langsys exists to remove — `Save` in eight namespaces becomes eight catalog entries needing eight translations. Collapse to feature-level categories and let identical phrases share one entry. See [core/categories.md](../core/categories.md).
+**Do not map namespaces 1:1.** That recreates the duplication Langsys exists to remove — `Save` in eight namespaces becomes eight catalog entries needing eight translations. Collapse to feature-level categories and let identical phrases share one entry. See [core/categories.md](../../categories.md).
 
 **Write the mapping table to disk and have it reviewed before any rewrite.**
 
@@ -127,7 +131,7 @@ Positional placeholders (`{0}`, `%s`) must become **named** ones. Translators ne
 </Phrase>
 ```
 
-`<Trans>` exists in i18next/react-intl for exactly the reason `<Phrase>` exists in Langsys: a sentence containing inline markup must stay **one** translatable unit. Mapping it to `<Translate>` splits it at every tag boundary and shreds every sentence it was protecting — and breaks pluralization in Russian, Arabic, and Polish. See [core/choosing-primitives.md](../core/choosing-primitives.md).
+`<Trans>` exists in i18next/react-intl for exactly the reason `<Phrase>` exists in Langsys: a sentence containing inline markup must stay **one** translatable unit. Mapping it to `<Translate>` splits it at every tag boundary and shreds every sentence it was protecting — and breaks pluralization in Russian, Arabic, and Polish. See [core/choosing-primitives.md](../core-0.6/choosing-primitives.md).
 
 ### Plurals
 
@@ -159,7 +163,7 @@ Keeping both libraries briefly is fine and often safer for a large migration; do
 
 ## Phase 6 — Verify
 
-Everything in [verify.md](../verify.md), plus:
+Everything in [verify.md](../core-0.6/verify.md), plus:
 
 - [ ] **Quarantine report reviewed** and every entry resolved by a human
 - [ ] Old catalog key count vs. registered phrase count — a large gap needs explaining

@@ -1,5 +1,9 @@
 # `LangsysApp.init()` configuration
 
+> **Pinned guide.** Base SDK `langsys-js-typescript@0.6.5` — the core the React and Vue bindings install. **Not** core 0.7; for that read the `langsys-typescript` skill.
+> A project on another version reads that package's own README instead —
+> [why](../README.md).
+
 Verified against `langsys-js-typescript@0.4.3`.
 
 ```ts
@@ -84,7 +88,7 @@ await LangsysApp.init({
 });
 ```
 
-Pass **both** or neither — translations without their locale cannot be matched to a request. See the [ssr/](../ssr/) tracks.
+Pass **both** or neither — translations without their locale cannot be matched to a request. See the [ssr/](../) tracks.
 
 ---
 

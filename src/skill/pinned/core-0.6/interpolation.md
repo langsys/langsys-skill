@@ -1,5 +1,9 @@
 # Interpolation: `{name}` vs `%name%`
 
+> **Pinned guide.** Base SDK `langsys-js-typescript@0.6.5` — the core the React and Vue bindings install. **Not** core 0.7; for that read the `langsys-typescript` skill.
+> A project on another version reads that package's own README instead —
+> [why](../README.md).
+
 Langsys uses two placeholder spellings. Using the wrong one **fails silently** — the base language renders correctly, so it passes review and breaks only when a user switches locale.
 
 ## The rule keys on position, not spelling

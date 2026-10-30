@@ -178,13 +178,37 @@ Record<string, unknown>. The narrower type compiles against both 0.4.x and 0.5.0
   },
   {
     id: 'no-init-apiurl',
-    severity: 'error',
-    message: '`apiUrl` is not a field on iLangsysInitConfig — it is silently dropped',
-    note: `Verified absent from langsys-js-typescript@0.4.3. TypeScript reports an excess
-property; plain JS gets no signal at all and keeps talking to production.
+    // WARNING, not error, because the verdict depends on a version this rule
+    // cannot see.
+    //
+    // `apiUrl` became a real init() field in base SDK 0.7.0 — and the PREFERRED
+    // way to point at another host, since `setBaseUrl()` has to run before
+    // init() and leaves the SDK permanently inert if it runs after. But the
+    // React and Vue bindings pin `^0.6.5`, which on a 0.x version caps below
+    // 0.7, so in those apps the field is still silently dropped.
+    //
+    // So the same line is correct in a Svelte or plain-TypeScript app and a
+    // silent misconfiguration in a React or Vue one, and nothing in the source
+    // distinguishes them: it is decided by the resolved dependency. An error
+    // here would fire on correct code in half the fleet, and a rule that fires
+    // on correct code gets bypassed — taking the cases it was right about with
+    // it. A warning that names the check is the most this can honestly do.
+    severity: 'warning',
+    message: '`apiUrl` on init() requires base SDK >= 0.7 — silently dropped below it',
+    note: `Which is right here depends on the core this app resolved to, which the
+source does not say. Check it:
 
-  LangsysApp.init({ apiUrl: '...' })            // wrong
-  LangsysAppAPI.setBaseUrl('...'); await LangsysApp.init({ ... })  // right (before init)`,
+  npm ls langsys-js-typescript
+
+  core >= 0.7   apiUrl is correct, and preferred over setBaseUrl()
+  core 0.6.x    apiUrl is NOT a field. It is dropped with no error and the SDK
+                keeps talking to production. React and Vue pin ^0.6.5, which
+                cannot accept 0.7, so this is their case.
+
+Below 0.7, use the setter instead, and mind the ordering — it must run BEFORE
+init(), or init() has already authorized against the default host:
+
+  LangsysAppAPI.setBaseUrl('...'); await LangsysApp.init({ ... })`,
     rule: {
       pattern: 'LangsysApp.init($CONF)',
       has: { kind: 'pair', has: { field: 'key', regex: '^apiUrl$' }, stopBy: 'end' },

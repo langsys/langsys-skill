@@ -1,8 +1,12 @@
 # React integration
 
-`langsys-js-react@0.4.3` · requires **React 18 or 19** (built on `useSyncExternalStore`).
+> **Pinned guide.** Verified against `langsys-js-react@0.6.7`, which installs base SDK core **0.6.5**.
+> A project on another version reads that package's own README instead —
+> [why](./README.md).
 
-Covers React, Next.js, Remix, and Vite SPAs. Server-rendering? Also read [ssr/nextjs.md](../ssr/nextjs.md).
+`langsys-js-react@0.6.7` · requires **React 18 or 19** (built on `useSyncExternalStore`).
+
+Covers React, Next.js, Remix, and Vite SPAs. Server-rendering? Also read [ssr/nextjs.md](./ssr-nextjs.md).
 
 ## 1. Install
 
@@ -14,7 +18,7 @@ npm install langsys-js-react
 
 ## 2. Environment
 
-Prefix must match your bundler ([core/secrets.md](../core/secrets.md)):
+Prefix must match your bundler ([core/secrets.md](../projects-and-keys.md)):
 
 ```bash
 # .env.local  — Vite
@@ -86,7 +90,7 @@ Placeholder names are type-checked against the phrase literal: a missing or extr
 
 ## 5. Markup — pick the right component
 
-Full decision procedure: [core/choosing-primitives.md](../core/choosing-primitives.md).
+Full decision procedure: [core/choosing-primitives.md](./core-0.6/choosing-primitives.md).
 
 ### `<Phrase>` — one sentence containing inline markup
 
@@ -152,7 +156,7 @@ function LocaleSwitcher() {
 }
 ```
 
-Re-run dependent code once the locale change is no longer in flight. This settles on failure too, so it doesn't prove a catalog arrived; see [core/init-config.md](../core/init-config.md):
+Re-run dependent code once the locale change is no longer in flight. This settles on failure too, so it doesn't prove a catalog arrived; see [core/init-config.md](./core-0.6/init-config.md):
 
 ```tsx
 useEffect(() => {
@@ -186,4 +190,4 @@ useEffect(() => {
 - [ ] No template literals or concatenation in phrase arguments
 - [ ] Read-only key + `debug: false` in production
 
-Then [verify.md](../verify.md).
+Then [verify.md](./core-0.6/verify.md).

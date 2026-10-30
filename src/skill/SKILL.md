@@ -1,103 +1,133 @@
 ---
 name: langsys
-description: Integrate the Langsys translation SDK into a project, or migrate a project from i18next/react-intl/vue-i18n onto Langsys. Use for any request about adding translations, internationalization, i18n, l10n, localization, multi-language support, or the langsys-js-react / langsys-js-vue / langsys-js-svelte / langsys-js-typescript / langsys-php SDKs.
+description: The Langsys entry skill. Read this first for any work on Langsys translation — adding translations, internationalization, i18n, l10n, localization or multi-language support — then the core skill of the SDK's language and the framework's own skill. Covers what Langsys is, choosing the SDKs, the project, API keys and secrets, whether a session may register content, categories, the MCP, the scan and doctor tools, and projects that render through two SDKs.
+metadata:
+  package: langsys-skill
+  version: 0.3.0
 ---
 
-# Langsys integration
+# Langsys
 
-Langsys is a realtime translation manager. Phrases are discovered from your running app — **the source text is the key**, so there are no catalog files in your repo.
+Langsys is a realtime translation manager. **Phrases are discovered from your running app and
+the source text is the key** — there are no catalog files in your repository, and no message
+ids to invent. Untranslated text renders as its source, so the base language always looks
+right.
 
-If you know i18next, react-intl, or vue-i18n, several of your instincts are wrong here. Read [core/invariants.md](./core/invariants.md) before writing code.
+That last property is why most Langsys mistakes are invisible. They do not break the page;
+they register the wrong thing, and someone finds out weeks later in another language.
 
----
+## This skill is the first of three
 
-## Phase 0 — Preflight
+| Step | Skill | Holds |
+|---|---|---|
+| 1 | **`langsys`** — this one | what is true in every language |
+| 2 | the language's core | `langsys-typescript` for JS/TS, `langsys-php` for PHP |
+| 3 | the framework's own | `langsys-svelte`, `langsys-laravel`, … — only what its framework changes |
 
-1. Read [core/choosing-primitives.md](./core/choosing-primitives.md) — which primitive to use. **The most common source of broken integrations.**
-2. Read [core/invariants.md](./core/invariants.md) — the rules that differ from other i18n libraries.
-3. Run `doctor` to check environment, key type, and SDK/runtime versions:
+**Never skip a step.** A framework skill lists deltas; the rules those deltas modify are in
+steps 1 and 2.
+
+If a step-2 or step-3 skill is not among your skills, that package has not had a release
+carrying one yet — [sdk-versions.md](./sdk-versions.md) says what to read instead, and
+[pinned/](./pinned/) holds the guides for the packages that still need them. Do not substitute
+a different version's skill; that is the one move guaranteed to be wrong.
+
+## Start here
+
+1. **Size it and check it.** `scan` for the profile and the amount of work, `doctor` for
+   whether the setup is sound and which guidance applies — [tools.md](./tools.md).
    ```bash
-   node .langsys/skill/../bin/doctor.mjs
+   node .langsys/bin/scan.mjs .
+   node .langsys/bin/doctor.mjs
    ```
+2. **Pick the SDK(s)** — [choosing-sdks.md](./choosing-sdks.md). One per place content is
+   rendered; a PHP backend plus a JS frontend is two.
+3. **Check the versions before installing** — [sdk-versions.md](./sdk-versions.md). Which core
+   a binding brings decides which rules apply, and in a React or Vue app you must never add
+   the core yourself.
+4. **Set up the project and keys** — [projects-and-keys.md](./projects-and-keys.md). Also the
+   answer to "why is nothing registering".
+5. **Read the step-2 core skill, then step 3**, and only then write code.
+6. **Verify** — [verify.md](./verify.md). Not done until the registered phrase set has been
+   read.
 
-4. **Check whether Langsys MCP tools are available in this session.** If they are, you can create the organization, project and API keys directly — see [core/mcp.md](./core/mcp.md). If they are not, mention it once:
-   ```bash
-   claude mcp add --scope=user --transport http langsys https://mcp.langsys.dev/mcp
-   ```
-   `--scope=user` makes it available in every project, not just this one. Then carry on — the skill works fully without it, and a user who already has a project ID and key does not need it. Do not stall the integration waiting for an answer.
-
-If installed SDK versions fall outside the verified range, **say so and stop** rather than guessing at behavior.
-
-## Phase 1 — Detect
-
-Run `scan` first. It builds the profile mechanically and sizes the job:
+Is the MCP available in this session? If so you can create the organization, project and keys
+directly — [mcp.md](./mcp.md). If not, mention it once and carry on; the skill works fully
+without it:
 
 ```bash
-node .langsys/skill/../bin/scan.mjs .
+claude mcp add --scope=user --transport http langsys https://mcp.langsys.dev/mcp
 ```
 
-It reports the framework, env prefix, existing i18n library, catalogs, and every conversion site split by primitive and by effort — plus a **NOT EXAMINED** section listing what it could not see. Read that section: the totals are only as complete as it says they are.
+## The rules every Langsys SDK shares
 
-Then follow [detect.md](./detect.md) to confirm the profile and fill in what `scan` cannot know — the base locale in particular. Do not skip it. The env prefix is the most common silent misconfiguration.
+Each core skill gives the API and the full reasoning. These are the rules themselves.
 
-## Phase 2 — Route
+**1. Never build a phrase string.** An interpolated phrase registers a brand-new catalog entry
+per distinct value — one per user, forever, in state every SDK on the project shares. No SDK
+can detect it: by the time the string arrives, an interpolated value is indistinguishable from
+an authored one.
 
-| Profile | Track |
-|---|---|
-| React | [integrate/react.md](./integrate/react.md) |
-| Vue | [integrate/vue.md](./integrate/vue.md) |
-| Svelte | [integrate/svelte.md](./integrate/svelte.md) |
-| Plain JS/TS | [integrate/vanilla-ts.md](./integrate/vanilla-ts.md) |
-| PHP | [integrate/php.md](./integrate/php.md) |
-
-**Before any SSR track, decide the rendering mode:** [core/rendering-mode.md](./core/rendering-mode.md).
-Public site needing crawler-visible translated body copy: on **SvelteKit**, seed the store in the layout body (its SSR track). On the **React and Vue tracks** (Next Pages or App Router, Nuxt, Remix), don't seed the store; use the pure catalog function or [core/server-sdk.md](./core/server-sdk.md). Public site → SSR, because only SSR puts *current* translations in crawlable HTML. App behind a login → client-only with a ready gate, and skip SSR entirely.
-
-Plus, if the app server-renders: [ssr/nextjs.md](./ssr/nextjs.md) · [ssr/nuxt.md](./ssr/nuxt.md) · [ssr/sveltekit.md](./ssr/sveltekit.md) · [ssr/php.md](./ssr/php.md)
-
-Already using another i18n library? Read [migrate/_method.md](./migrate/_method.md) **first**, then the matching track: [i18next](./migrate/i18next.md) · [react-intl](./migrate/react-intl.md) · [vue-i18n](./migrate/vue-i18n.md)
-
-## Phase 3 — Apply
-
-Install, wire `init()` once high in the tree with a ready gate, then convert content using the per-region decision from [core/choosing-primitives.md](./core/choosing-primitives.md). Do not blanket-wrap.
-
-## Phase 4 — Verify
-
-Follow [verify.md](./verify.md). It is not done until this passes — including inspecting the **registered phrase set**, which is the only check that catches primitive-selection errors.
-
----
-
-## The five rules that matter most
-
-**1. Never build a phrase string.** Interpolated phrases register a new catalog entry per value, polluting the shared Translation Manager permanently. The SDK cannot detect this.
-
-```ts
-t(`Hello, ${name}!`)                    // ❌ new phrase per user
-t('Hello, {name}!', 'UI', { name })     // ✅
-t(article.title, 'Blog')                // ✅ passing content through is not building it
+```
+t(`Hello, ${name}!`)                                   ❌ one phrase per user
+t('Hello, {name}!', 'UI', { name })                    ✅
+translate(sprintf('Hi, %s', $n))                       ❌
+translate('Hi, {n}', null, null, null, ['n' => $n])    ✅
+t(article.title, 'Blog')                               ✅ passing content through is not building it
 ```
 
-The test is **cardinality, not syntax**: unbounded per-visitor values pollute, a bounded editorial
-set is the content you meant to translate. Content from a CMS, an API or a third party needs
-nothing special — see [invariants.md](./core/invariants.md).
+The test is **cardinality, not syntax**. A CMS with 400 products registering 400 phrases is
+the content you wanted translated; `${name}` registers one per visitor. Content from a CMS, a
+database, a PIM feed or a partner API needs no special handling — the app is where content
+converges, and that is where translation happens.
 
-**2. The phrase is the key.** No `locales/en.json`, no dot-keys.
+**2. The source text is the key.** No `locales/en.json`, no `messages/`, no dot-keys.
+`t('home.welcome')` registers the literal string `home.welcome`. If a project being migrated
+has catalog files, they are *inputs* to the migration, not something to recreate.
 
-```ts
-t('Welcome back', 'Home')   // ✅
-t('home.welcome')            // ❌ registers the literal "home.welcome"
-```
+> **Laravel is the deliberate exception.** There you keep writing `__('messages.welcome')` and
+> keep your lang files: the key resolves to its line in the base-language file, and that
+> sentence is the phrase. The key never reaches Langsys —
+> [pinned/laravel.md](./pinned/laravel.md).
 
-**3. Phrase first, category second.** `t(phrase, category?, params?)`. Both orders typecheck — the compiler will not catch a reversal.
+**3. Phrase first, category second.** `t(phrase, category?, params?)`. With a
+placeholder-free phrase **both orders typecheck**, so the compiler will not catch a swap.
 
-**4. `%name%` in markup, `{name}` in `t()` strings.** Framework compilers eat `{name}` in markup before the SDK sees it. Silent failure — the base language still looks right.
+**4. Pick the primitive by asking where the phrase boundaries are** — not by how much text
+there is. The question is whether a tag boundary belongs to the **language** or to the
+**layout**.
 
-**5. Pick the right primitive.** `t()` for plain strings. `<Phrase>` keeps a markup-bearing sentence whole. `<Translate>` splits a block into its parts. Using `<Translate>` on a sentence with `<strong>` in it shreds the sentence and breaks pluralization in Russian, Arabic, and Polish.
+| Content | Primitive | What it does |
+|---|---|---|
+| Plain string, no markup | a plain `t()` call | one phrase |
+| One sentence that happens to contain inline markup | the keep-together primitive | encodes the whole run as **one** phrase |
+| A block of markup — article, nav, form, marketing section | the splitting primitive | tokenizes each text node as its own phrase |
 
----
+Using the splitting primitive on a sentence with `<strong>` in it shreds it into fragments no
+translator can work with and no language can reorder — and a count separated from the noun it
+inflects makes the plural **unexpressible** in Russian, Arabic and Polish. It still renders,
+in word-salad, in every locale but yours.
+
+**5. The server decides whether a session may register**, not the key's type. An answer
+without that decision is read-only, even for a write key; an `ip_write` key writes only from
+an allow-listed address; an app behind a login needs per-user write grants. A read-only
+session reports a page's URL so Langsys can record where untranslated content is — **recording
+is not registering**, and nothing on that list reaches the catalog until a write-enabled
+session renders the page. [projects-and-keys.md](./projects-and-keys.md)
+
+**6. Write key in development, read-only or `ip_write` in production.** And match the
+environment-variable prefix to the bundler — the single most common silent misconfiguration.
+
+**7. Categorize only when the same words legitimately mean different things.** `Home` the nav
+item and `Home` the noun want different translations; most phrases want none.
+[categories.md](./categories.md)
 
 ## Reference
 
-[core/server-sdk.md](./core/server-sdk.md) · [core/mcp.md](./core/mcp.md) · [core/interpolation.md](./core/interpolation.md) · [core/init-config.md](./core/init-config.md) · [core/categories.md](./core/categories.md) · [core/secrets.md](./core/secrets.md) · [troubleshooting.md](./troubleshooting.md)
+[choosing-sdks.md](./choosing-sdks.md) · [sdk-versions.md](./sdk-versions.md) ·
+[projects-and-keys.md](./projects-and-keys.md) · [two-languages.md](./two-languages.md) ·
+[categories.md](./categories.md) · [mcp.md](./mcp.md) · [tools.md](./tools.md) ·
+[verify.md](./verify.md) · [pinned/](./pinned/README.md)
 
-Verified SDK behavior and known upstream doc defects: [VERIFIED.md](../VERIFIED.md)
+Verified SDK behavior, and the versions each claim was checked against:
+[VERIFIED.md](../VERIFIED.md)

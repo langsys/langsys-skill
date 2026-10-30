@@ -49,9 +49,9 @@ For an integration, the useful sequence is:
 1. Confirm or create the **organization**
 2. Create the **project**, and set its base locale to the one the profile settled on
 3. Create **two API keys** — a write key for development, a read-only key for production
-4. Write them into `.env` with the prefix the bundler requires (see [secrets.md](./secrets.md))
+4. Write them into `.env` with the prefix the bundler requires (see [secrets.md](./projects-and-keys.md))
 
-**Create two keys, not one.** This is the moment it costs nothing. A single key ends up in both environments, and a write key in production registers phrases from live user traffic — the pollution is permanent and shared, and nobody notices until a translator asks about the catalog. See [invariants.md](./invariants.md).
+**Create two keys, not one.** This is the moment it costs nothing. A single key ends up in both environments, and a write key in production registers phrases from live user traffic — the pollution is permanent and shared, and nobody notices until a translator asks about the catalog. See [projects-and-keys.md](./projects-and-keys.md).
 
 Confirm the base locale with the user before creating the project. `en-GB` and `en-US` are different catalogs, and the choice is not reversible by editing a config file.
 

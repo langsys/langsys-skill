@@ -17,8 +17,8 @@
  * Exit: 0 clean, 1 findings.
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, extname } from 'node:path';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { join, extname, dirname, resolve } from 'node:path';
 
 const EXTS = new Set(['.svelte', '.vue', '.tsx', '.jsx', '.html']);
 const findings = [];
@@ -102,10 +102,56 @@ function componentSpans(masked) {
 
 const lineOf = (src, idx) => src.slice(0, idx).split('\n').length;
 
+/**
+ * Does the project owning this file run Svelte's build-time transform?
+ *
+ * `langsysPreprocess()` (langsys-js-svelte 4.0.0) reads `{expression}` inside
+ * `<Translate>` and `<Phrase>` from the SOURCE and turns it into a named
+ * placeholder. Where it is configured, `{name}` in that markup is CORRECT —
+ * the exact opposite of rule 1's verdict.
+ *
+ * So the rule has to know. A linter that fires on correct code gets bypassed,
+ * and bypassed with it go the cases it was right about: the same braces are
+ * still a silent defect in every other binding, and in a Svelte app that has
+ * not added the line.
+ *
+ * Detection walks up to the nearest project root and looks for the symbol in
+ * the configs that can install it. Presence is treated as "configured", without
+ * trying to decide WHICH files it covers — a config can scope it to a subset
+ * (the Svelte repo's own testbed does exactly that), and guessing the scope
+ * would put a heuristic on the suppression side, where being wrong is silent.
+ * Downgrading to a warning that names the ambiguity keeps it visible either way.
+ */
+const transformCache = new Map();
+function hasSvelteTransform(fromPath) {
+  let dir = dirname(resolve(fromPath));
+  for (let i = 0; i < 8; i++) {
+    if (transformCache.has(dir)) return transformCache.get(dir);
+    let found = false;
+    if (existsSync(join(dir, 'package.json'))) {
+      for (const cfg of ['svelte.config.js', 'svelte.config.mjs', 'vite.config.ts', 'vite.config.js']) {
+        const p = join(dir, cfg);
+        if (!existsSync(p)) continue;
+        try {
+          if (/langsysPreprocess/.test(readFileSync(p, 'utf8'))) { found = true; break; }
+        } catch { /* unreadable config: treat as absent */ }
+      }
+      transformCache.set(dir, found);
+      return found;
+    }
+    const up = dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return false;
+}
+
 function checkFile(path) {
   const src = readFileSync(path, 'utf8');
   const masked = maskLegitimate(src);
   const isVue = extname(path) === '.vue';
+  const isSvelte = extname(path) === '.svelte';
+  const svelteTransform = isSvelte && hasSvelteTransform(path);
 
   for (const span of componentSpans(masked)) {
     const body = masked.slice(span.start, span.end);
@@ -120,10 +166,18 @@ function checkFile(path) {
       findings.push({
         path,
         line: lineOf(src, abs),
-        level: isVue ? 'warn' : 'error',
+        level: isVue || svelteTransform ? 'warn' : 'error',
         rule: 'markup-brace-placeholder',
-        msg: `{${b[1]}} inside <${span.tag}> markup — write %${b[1]}% instead`,
-        note: isVue
+        msg: svelteTransform
+          ? `{${b[1]}} inside <${span.tag}> markup — correct only because this project configures langsysPreprocess()`
+          : `{${b[1]}} inside <${span.tag}> markup — write %${b[1]}% instead`,
+        note: svelteTransform
+          ? `This project's config names langsysPreprocess(), which reads {${b[1]}} at build time and `
+            + `registers it as the placeholder {${b[1]}} — so this is right, and %${b[1]}% would also be right. `
+            + `Two things to confirm: that the transform actually covers THIS file (a config may scope it to a `
+            + `subset), and that the block holds no {#each}, {#await}, snippet or child component, which make it `
+            + `a fallback that registers nothing. The build warns when it does.`
+          : isVue
           ? 'Vue consumes only {{ }}, so this happens to work — but %name% is the portable form every binding accepts.'
           : 'The framework compiler substitutes {name} before Langsys sees the text. Silent failure: the base language still renders correctly, and it breaks only on locale switch.',
       });

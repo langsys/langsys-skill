@@ -1,5 +1,9 @@
 # Migrating from react-intl / FormatJS
 
+> **Pinned guide.** The codemod route, for base SDK core **0.6.x** only. On core 0.7 the `langsys-typescript` skill's `legacyKeys` path replaces this.
+> A project on another version reads that package's own README instead —
+> [why](../README.md).
+
 Read [_method.md](./_method.md) first.
 
 ## Detect
@@ -106,7 +110,7 @@ LangsysApp.init({
 
 ## Verify
 
-Beyond [verify.md](../verify.md):
+Beyond [verify.md](../core-0.6/verify.md):
 
 - [ ] No `formatMessage` or `<FormattedMessage>` remaining
 - [ ] `defineMessages` blocks deleted
