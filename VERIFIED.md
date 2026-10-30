@@ -1780,8 +1780,19 @@ filter here was in the pattern rather than in the code around it, which is harde
 The check now matches any relative target and asserts it is a **file**, verified by
 reintroducing `./pinned/` and watching it fail.
 
-**Severity is split by ownership, not by how bad the link is.** A directory link *into* this
-payload from an SDK skill is reported and does not fail: it lives in another repo's published
-package, which cannot be edited, and Docs generates a per-directory index so it resolves. A
-directory link *inside* this payload fails the suite, because it is ours to fix. A missing path
-is a violation in both directions.
+**Severity is decided by MODE, not by how bad the link is** — the mode is what says whether the
+link can still be fixed.
+
+| Mode | Who runs it | Directory link | Missing path |
+|---|---|---|---|
+| `--source=<dir>` | an SDK lane, on its own skill, before releasing | **fails** | fails |
+| aggregate sweep | here, over already-published packages | reported | fails |
+| this payload's own links | the suite | **fails** | fails |
+
+The pre-release gate is strict because the link is that lane's to fix and the release has not
+happened yet. The sweep is lenient because a published package cannot be edited and Docs
+generates a per-directory index that resolves the link, so failing would block a release over
+something already backstopped. Nothing backstops a missing path, so it fails everywhere.
+
+Both modes are tested in both directions: forcing the sweep's leniency into the gate, and the
+gate's strictness into the sweep, each makes the test fail.

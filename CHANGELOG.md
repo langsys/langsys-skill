@@ -152,11 +152,13 @@ test that fails without the fix.
   directory was structurally unmatchable — the check reported "all links resolve" while seven
   did not resolve for any reader on the web. It now matches any relative target and asserts the
   target is a file.
-- **`skill-contract` treated a directory as resolved too**, and now distinguishes the two by
-  **ownership rather than severity**: a directory link from an SDK skill is reported, because it
-  lives in a published package that cannot be edited and Docs generates a per-directory index
-  so it does resolve; a directory link inside this payload fails the suite, because that one is
-  ours to fix. A genuinely missing path is still a violation either way.
+- **`skill-contract` treated a directory as resolved too.** It now decides by **mode**, because
+  the mode says whether the link can still be fixed. `--source=<dir>`, which an SDK lane runs on
+  its own skill before releasing, **fails** on a directory link: it is their link and the release
+  has not happened. The aggregate sweep over already-published packages **reports** it, since
+  those cannot be edited and Docs generates a per-directory index that resolves it. A missing
+  path is a violation in both modes — nothing backstops that. A directory link inside this
+  payload fails the suite, which is the same principle applied to our own tree.
 
 ### Changed
 

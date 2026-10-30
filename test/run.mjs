@@ -2207,42 +2207,63 @@ test('the write-answer symptom tree distinguishes unset from the three ways it i
     assert.match(txt, /credentials, authorization refused\s+false\s+false\s+true/);
 });
 
-test('tree: a directory link from an SDK skill is reported, not failed', () => {
-    // Severity by ownership. An inbound link lives in another repo's published
-    // package and cannot be edited, and Docs generates a per-directory index, so
-    // the link resolves — failing this repo's check on it would block their
-    // release for a style preference. A directory link in OUR payload is a hard
-    // failure in the installed-layout test, because that one is ours to fix.
+test('tree: a directory link fails the pre-release gate and is reported in the sweep', () => {
+    // Severity by MODE, because the mode says whether the link can still be
+    // fixed. --source is a lane gating its own skill before it ships, so the gate
+    // should make it fail; the aggregate sweep looks at packages already
+    // published and uneditable, where Docs' per-directory index backstops it.
+    // A missing path is nothing's to backstop, so it fails in both.
+    const canonical = readFileSync(join(root, 'src/skill/preamble.md'), 'utf8')
+        .match(/<!-- langsys-skill-preamble:start -->[\s\S]*?<!-- langsys-skill-preamble:end -->/)[0];
+    const skillFor = (link) =>
+        `---\nname: langsys-fixture\n---\n\n${canonical}\n\nSee ${link}\n`;
+    const run = (args) => {
+        try {
+            return { out: execFileSync('node', [join(root, 'src/bin/skill-contract.mjs'), ...args],
+                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), code: 0 };
+        } catch (e) { return { out: (e.stdout ?? '') + (e.stderr ?? ''), code: e.status }; }
+    };
+
+    // ── Mode 1: --source, a lane gating its own unreleased skill ──────────────
     const sdk = mkdtempSync(join(tmpdir(), 'langsys-dirlink-'));
     try {
-        const canonical = readFileSync(join(root, 'src/skill/preamble.md'), 'utf8')
-            .match(/<!-- langsys-skill-preamble:start -->[\s\S]*?<!-- langsys-skill-preamble:end -->/)[0];
-        writeFileSync(join(sdk, 'SKILL.md'),
-            `---\nname: langsys-fixture\n---\n\n${canonical}\n\n`
-            + 'See https://docs.langsys.dev/skill/langsys/pinned/ for the pinned guides.\n');
+        writeFileSync(join(sdk, 'SKILL.md'), skillFor('https://docs.langsys.dev/skill/langsys/pinned/'));
+        let r = run([`--source=${sdk}`]);
+        assert.equal(r.code, 1, 'a directory link must FAIL the pre-release gate');
+        assert.match(r.out, /a DIRECTORY/);
+        assert.match(r.out, /has not shipped yet, so fix it here/,
+            'and must say why this mode is strict');
 
-        let out = '', code = 0;
-        try {
-            out = execFileSync('node', [join(root, 'src/bin/skill-contract.mjs'), `--source=${sdk}`],
-                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-        } catch (e) { out = (e.stdout ?? '') + (e.stderr ?? ''); code = e.status; }
+        // A missing path: a violation here too.
+        writeFileSync(join(sdk, 'SKILL.md'), skillFor('https://docs.langsys.dev/skill/langsys/not-a-real-page.md'));
+        assert.equal(run([`--source=${sdk}`]).code, 1, 'a missing path must fail the gate');
 
-        assert.equal(code, 0, 'a directory link must not fail another repo\'s release');
-        assert.match(out, /a DIRECTORY/, 'but it must be reported');
-        assert.match(out, /should name its page/, 'with what to do about it');
-
-        // CONTROL: a genuinely missing path must still be a violation, or the
-        // above would be indistinguishable from the check not running.
-        writeFileSync(join(sdk, 'SKILL.md'),
-            `---\nname: langsys-fixture\n---\n\n${canonical}\n\n`
-            + 'See https://docs.langsys.dev/skill/langsys/not-a-real-page.md\n');
-        let code2 = 0;
-        try {
-            execFileSync('node', [join(root, 'src/bin/skill-contract.mjs'), `--source=${sdk}`],
-                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-        } catch (e) { code2 = e.status; }
-        assert.equal(code2, 1, 'a missing path must still be a violation');
+        // CONTROL: a link naming a real page must pass, or the two above would be
+        // indistinguishable from the mode refusing everything.
+        writeFileSync(join(sdk, 'SKILL.md'), skillFor('https://docs.langsys.dev/skill/langsys/projects-and-keys.md'));
+        assert.equal(run([`--source=${sdk}`]).code, 0, 'a link naming a page must pass');
     } finally {
         rmSync(sdk, { recursive: true, force: true });
+    }
+
+    // ── Mode 2: the aggregate sweep over already-published packages ───────────
+    // Planted where the sweep looks. try/finally unconditionally: a fixture left
+    // in the tree makes every later contract run report an unrelated violation.
+    const planted = join(root, 'node_modules', 'langsys-fixture-published', 'skill');
+    try {
+        mkdirSync(planted, { recursive: true });
+        writeFileSync(join(planted, 'SKILL.md'), skillFor('https://docs.langsys.dev/skill/langsys/pinned/'));
+        let r = run([]);
+        assert.equal(r.code, 0, 'a directory link must NOT fail the sweep over published packages');
+        assert.match(r.out, /a DIRECTORY/, 'but it must still be reported');
+        assert.match(r.out, /worth raising with that lane/i);
+
+        // A missing path still fails, even in the lenient mode.
+        writeFileSync(join(planted, 'SKILL.md'), skillFor('https://docs.langsys.dev/skill/langsys/not-a-real-page.md'));
+        r = run([]);
+        assert.equal(r.code, 1, 'a missing path must be a violation in the sweep too');
+        assert.match(r.out, /does not exist in src\/skill/);
+    } finally {
+        rmSync(join(root, 'node_modules', 'langsys-fixture-published'), { recursive: true, force: true });
     }
 });

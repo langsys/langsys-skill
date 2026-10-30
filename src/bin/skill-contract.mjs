@@ -78,11 +78,18 @@ export function docsLinkPaths(text) {
  * directory — but a link should name its page, so it is reported rather than
  * failed. `'missing'` is a violation.
  *
- * The distinction is about OWNERSHIP, not severity. An inbound link lives in
- * another repo's published package, which cannot be edited, so failing this
- * repo's check on a style preference would block their release for something
- * Docs already backstops. A directory link inside OUR OWN payload is a hard
- * failure in the suite, because it is ours to fix.
+ * Whether `'dir'` fails depends on the MODE, because the mode says whether the
+ * link can still be fixed:
+ *
+ *   --source=<dir>   an SDK lane checking its own skill BEFORE it releases. The
+ *                    link is theirs and the release has not happened, so the
+ *                    gate should make it: a directory link FAILS.
+ *   aggregate        a sweep over packages that are already published and
+ *                    cannot be edited. Docs generates a per-directory index, so
+ *                    the link resolves; failing here would block a release over
+ *                    something already backstopped. REPORTED instead.
+ *
+ * A missing path is a violation in both modes — nothing backstops that.
  *
  * The payload root is a file case, not a directory one: `.../skill/langsys/` is
  * the entry skill's canonical URL and resolves to its SKILL.md.
@@ -183,6 +190,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
 
     const skills = sources(explicit);
+    // An explicit --source means a lane is gating its OWN skill before release.
+    const preRelease = explicit.length > 0;
 
     for (const s of skills) {
         // Check 1 — the shared opening.
@@ -207,7 +216,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
                 if (kind === 'missing') {
                     violations.push(`${s.label}: ${relative(s.dir, f)} links to ${DOCS_PREFIX}${p}, which does not exist in src/skill/. Keep that path, or get the link changed before it is published.`);
                 } else if (kind === 'dir') {
-                    notes.push(`${s.label}: ${relative(s.dir, f)} links to ${DOCS_PREFIX}${p}, a DIRECTORY. Docs generates an index for it, so it resolves — but a link should name its page. Worth raising with that lane.`);
+                    const msg = `${s.label}: ${relative(s.dir, f)} links to ${DOCS_PREFIX}${p}, a DIRECTORY. On disk that lists; over HTTP it dead-ends. Name the page it means.`;
+                    if (preRelease) {
+                        violations.push(`${msg} This is your own skill and it has not shipped yet, so fix it here.`);
+                    } else {
+                        notes.push(`${msg} Docs generates an index for it, so it resolves — but worth raising with that lane.`);
+                    }
                 }
             }
         }
