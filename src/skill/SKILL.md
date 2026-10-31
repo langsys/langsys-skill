@@ -3,7 +3,7 @@ name: langsys
 description: The Langsys entry skill. Read this first for any work on Langsys translation — adding translations, internationalization, i18n, l10n, localization or multi-language support — then the core skill of the SDK's language and the framework's own skill. Covers what Langsys is, choosing the SDKs, the project, API keys and secrets, whether a session may register content, categories, the MCP, the scan and doctor tools, and projects that render through two SDKs.
 metadata:
   package: langsys-skill
-  version: 0.3.0
+  version: 0.3.1
 ---
 
 # Langsys
@@ -22,7 +22,7 @@ they register the wrong thing, and someone finds out weeks later in another lang
 |---|---|---|
 | 1 | **`langsys`** — this one | what is true in every language |
 | 2 | the language's core | `langsys-typescript` for JS/TS, `langsys-php` for PHP |
-| 3 | the framework's own | `langsys-svelte`, `langsys-laravel`, … — only what its framework changes |
+| 3 | the framework's own | `langsys-svelte`, and others as they ship — only what its framework changes |
 
 **Never skip a step.** A framework skill lists deltas; the rules those deltas modify are in
 steps 1 and 2.

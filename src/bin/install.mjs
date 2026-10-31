@@ -72,6 +72,20 @@ const unknown = args.filter((a) => {
     return !KNOWN_FLAGS.includes(name) && !KNOWN_VALUES.includes(name);
 });
 
+// A BARE PATH is rejected, not ignored. `doctor` and `scan` both take their root
+// as a positional argument, so `install <path>` is the natural thing to type —
+// and it used to be dropped silently and install into the current directory
+// instead. This is the tool that WRITES, so the quiet version of that mistake
+// puts a payload somewhere nobody asked for, and the run reports success.
+const stray = args.filter((a) => !a.startsWith('-'));
+if (stray.length) {
+    console.error(`langsys-skill: unexpected argument${stray.length > 1 ? 's' : ''} ${stray.join(', ')}\n`);
+    console.error(`  Did you mean --dir=${stray[0]} ?`);
+    console.error('  Unlike `doctor` and `scan`, the installer takes its target as --dir=<path>,');
+    console.error('  because a path it guessed wrong is a path it writes files into.');
+    process.exit(2);
+}
+
 if (unknown.length) {
     console.error(`langsys-skill: unknown option${unknown.length > 1 ? 's' : ''} ${unknown.join(', ')}\n`);
     console.error('  --host=claude,codex   install for specific hosts (default: auto-detect)');

@@ -145,6 +145,13 @@ const PINNED_CORE_PACKAGES = new Set(['langsys-js-react', 'langsys-js-vue']);
             const inst = readJson(join(root, 'vendor', name, 'composer.json'));
             // Composer does not record the resolved version in the package's own
             // manifest, so fall back to the lock file, which does.
+            //
+            // The lock on purpose, not `vendor/composer/installed.json`, which is
+            // what `composerInstalledVersions` reads for the skill check. The two
+            // answer different questions and can disagree: the lock is what
+            // resolution DECIDED, and this check is about the declared pin, while
+            // installed.json is what is actually in `vendor/` — which is where a
+            // copied skill came from, so that is the one to compare a copy to.
             const lock = readJson(join(root, 'composer.lock'));
             const v = lock?.packages?.find((p) => p.name === name)?.version?.replace(/^v/, '')
                 ?? inst?.version;
@@ -298,10 +305,35 @@ for (const name of bindings) {
                 warn(`skill ${rec.name}: ${edited.length} copied file(s) no longer match what was installed`,
                      `Someone edited the copy in place (${edited.slice(0, 3).join(', ')}${edited.length > 3 ? ', …' : ''}). ` +
                      `The SDK's own copy is authoritative; re-running the installer will discard these edits.`);
-            } else if (live.installed && rec.installed && live.installed !== rec.installed) {
+            } else if (!live.installed) {
+                // Nothing was compared, so this is not a match. Reporting it as
+                // one is the failure this whole check exists to prevent: a green
+                // line that asserts agreement between a version and an absence.
+                warn(`skill ${rec.name}: could not read the installed version of ${rec.package}`,
+                     'The skill was NOT checked against it. A Composer package records its version in ' +
+                     'vendor/composer/installed.json and an npm one in package.json; if neither is ' +
+                     'readable here, verify the version by hand before relying on the skill.');
+            } else if (!rec.installed) {
+                // A manifest written before this package could read a Composer
+                // version recorded none, so there is nothing on the manifest
+                // side to compare. Re-running the installer records it.
+                warn(`skill ${rec.name} was copied without recording which version of ${rec.package} it came from`,
+                     `${rec.package} ${live.installed} is installed now. Re-run \`npx langsys-skill install\` ` +
+                     `so a later upgrade can be detected.`);
+            } else if (live.installed !== rec.installed) {
                 warn(`skill ${rec.name} describes ${rec.installed}, but ${rec.package} ${live.installed} is installed`,
                      'Re-run `npx langsys-skill install`. Until then the skill documents a version you do not have.');
-            } else if (live.declares && live.installed && cmpVersion(live.declares, live.installed) !== 0) {
+            } else if (!/^\d/.test(live.installed)) {
+                // Composer records a branch or path install as `dev-main`, which
+                // carries no version to compare. Running the comparison anyway
+                // makes cmpVersion read it as 0 and reports the SDK as having
+                // shipped its skill out of step — telling the agent to go and
+                // file a bug that does not exist. The PHP SDK's own lane works
+                // this way locally, so it is the likeliest reader of this line.
+                info(`skill ${rec.name}: ${rec.package} is a development checkout (${live.installed})`,
+                     `The skill declares ${live.declares}. A dev checkout carries no version to compare ` +
+                     `against, so whether they agree is unknown — treat the skill as unverified here.`);
+            } else if (live.declares && cmpVersion(live.declares, live.installed) !== 0) {
                 warn(`skill ${rec.name} declares ${live.declares} but ships inside ${rec.package} ${live.installed}`,
                      'The SDK shipped its skill out of step with itself. Trust the package, report the skill.');
             } else {

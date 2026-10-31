@@ -18,6 +18,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { typeSurface } from '../src/bin/drift-guard.mjs';
+import { composerInstalledVersions } from '../src/bin/lib/discover-skills.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /**
@@ -1750,6 +1751,21 @@ const install = (dir, extra = []) => {
     }
 };
 
+// Declared with the other tree helpers, and above every test that calls it.
+//
+// This file has a top-level `await import` at the `selfDescribesUnreleased` test.
+// After a top-level await, node:test runs each subsequent top-level `test()`
+// body SYNCHRONOUSLY at registration rather than after the module finishes
+// evaluating — so every test below that await sees only the helpers declared
+// above it, and one declared further down is in its temporal dead zone. The
+// ReferenceError reads as a flake, because the tests above the await pass.
+const doctorOn = (d, extra = []) => {
+    try {
+        return execFileSync('node', [join(root, 'src/bin/doctor.mjs'), d, ...extra],
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) { return (e.stdout ?? '') + (e.stderr ?? ''); }
+};
+
 /** A project with one Langsys package that ships a skill. */
 const projectWithSkill = ({ pkg = 'langsys-js-typescript', version = '0.7.0', declares = version,
                             name = 'langsys-typescript', nested = null } = {}) => {
@@ -1847,6 +1863,222 @@ test('tree: doctor separates a matching skill from a stale one and an edited one
     assert.match(edited, /will discard these edits/, 'edited must warn before the fix destroys work');
 
     rmSync(dir, { recursive: true, force: true });
+});
+
+/**
+ * A Composer project with one Langsys package that ships a skill.
+ *
+ * Laid out the way Composer really lays it out, which is the whole point of the
+ * fixture: the package's own composer.json has NO `version` key, and the
+ * installed version exists only in vendor/composer/installed.json, recorded as
+ * the git tag — so with a leading `v` that the skill's frontmatter does not have.
+ */
+const composerProjectWithSkill = ({ pkg = 'langsys/langsys-php', recorded = 'v2.0.1',
+                                    declares = '2.0.1', name = 'langsys-php' } = {}) => {
+    const dir = mkdtempSync(join(tmpdir(), 'langsys-vendor-'));
+    writeFileSync(join(dir, 'composer.json'),
+        JSON.stringify({ name: 'app/app', require: { [pkg]: `^${declares}` } }));
+    const base = join(dir, 'vendor', ...pkg.split('/'));
+    mkdirSync(join(base, 'skill'), { recursive: true });
+    writeFileSync(join(base, 'composer.json'), JSON.stringify({ name: pkg, type: 'library' }));
+    writeFileSync(join(base, 'skill', 'SKILL.md'),
+        `---\nname: ${name}\ndescription: test\nmetadata:\n  package: ${pkg}\n  version: ${declares}\n---\n\n# ${name}\n\nbody\n`);
+    writeFileSync(join(base, 'skill', 'extra.md'), '# extra\n\nmore\n');
+    mkdirSync(join(dir, 'vendor', 'composer'), { recursive: true });
+    const setRecorded = (v) => writeFileSync(join(dir, 'vendor', 'composer', 'installed.json'),
+        JSON.stringify({ packages: [{ name: pkg, version: v, version_normalized: `${v.replace(/^v/, '')}.0` }],
+                         dev: false, 'dev-package-names': [] }));
+    setRecorded(recorded);
+    return { dir, setRecorded };
+};
+
+test('tree: a Composer package\'s installed version is read from installed.json', () => {
+    // The package's own composer.json carries no version, so this is the only
+    // place it exists. Reading it from the manifest instead left `installed`
+    // null and doctor announced a match against nothing — a pass that could not
+    // have failed, on the one comparison the check exists to make.
+    const { dir } = composerProjectWithSkill();
+    try {
+        const out = install(dir);
+        // Reads the SKILL's declared version, so it holds with or without the
+        // installed.json read — it is here to pin the report line, not the fix.
+        assert.match(out, /SDK skills: langsys-php@2\.0\.1/, 'the install must name the skill it found');
+
+        const m = JSON.parse(readFileSync(join(dir, '.langsys/skills.json'), 'utf8'));
+        const rec = m.skills.find((s) => s.name === 'langsys-php');
+        assert.ok(rec, 'the manifest must record the skill');
+        assert.equal(rec.package, 'langsys/langsys-php');
+        assert.equal(rec.installed, '2.0.1',
+            'the installed version must come from installed.json, and without Composer\'s `v`');
+
+        // Both sides bare: Composer records the TAG, so an unstripped `v` would
+        // make this line read `matches langsys/langsys-php v2.0.1`. (Doctor's
+        // Packagist line quotes the tag as Packagist gives it, `v2.0.1`, which
+        // is correct there — so this assertion is on the skill line only.)
+        const skillLine = doctorOn(dir).split('\n').find((l) => /skill langsys-php/.test(l)) ?? '';
+        assert.match(skillLine, /skill langsys-php@2\.0\.1 matches langsys\/langsys-php 2\.0\.1$/,
+            'a correct install must read as matching, with a bare version on both sides');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('tree: doctor flags a Composer skill left behind by its package', () => {
+    const { dir, setRecorded } = composerProjectWithSkill();
+    try {
+        install(dir);
+        // The package moved on, the copy did not. Only installed.json changes —
+        // which is exactly what `composer update` does to a vendor tree.
+        setRecorded('v2.0.2');
+        const stale = doctorOn(dir);
+        assert.match(stale, /describes 2\.0\.1, but langsys\/langsys-php 2\.0\.2 is installed/,
+            'a stale PHP skill must be named, not passed over for want of a version to compare');
+        assert.match(stale, /Re-run/, 'stale must name its fix');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('tree: a Composer skill shipped out of step with its own package is flagged', () => {
+    // installed.json and SKILL.md disagree at install time: the SDK tagged a
+    // release whose skill declares another version. That is the SDK's bug, not
+    // the project's, so it must not read as "re-run the installer".
+    const { dir } = composerProjectWithSkill({ recorded: 'v2.0.2', declares: '2.0.1' });
+    try {
+        install(dir);
+        const d = doctorOn(dir);
+        assert.match(d, /declares 2\.0\.1 but ships inside langsys\/langsys-php 2\.0\.2/);
+        assert.match(d, /Trust the package, report the skill/, 'and it must say whose bug it is');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('tree: composerInstalledVersions reads every shape Composer writes', () => {
+    // The fixture above exercises one shape. These are the others, and two of
+    // them changed behaviour in this file: a bare version must not be mangled by
+    // the `v` strip, and `dev-main` must survive it intact so the caller can see
+    // that it is not a version at all.
+    const dir = mkdtempSync(join(tmpdir(), 'langsys-cv-'));
+    const write = (obj) => {
+        mkdirSync(join(dir, 'vendor', 'composer'), { recursive: true });
+        writeFileSync(join(dir, 'vendor', 'composer', 'installed.json'),
+            typeof obj === 'string' ? obj : JSON.stringify(obj));
+    };
+    try {
+        assert.equal(composerInstalledVersions(dir).size, 0, 'no file at all must read as empty, not throw');
+
+        write('{ not json');
+        assert.equal(composerInstalledVersions(dir).size, 0, 'unparseable must read as empty, not throw');
+
+        // Composer 2.
+        write({ packages: [{ name: 'langsys/langsys-php', version: 'v2.0.1' }], dev: false });
+        assert.equal(composerInstalledVersions(dir).get('langsys/langsys-php'), '2.0.1');
+
+        // Composer 1 wrote a bare array.
+        write([{ name: 'langsys/langsys-php', version: 'v1.3.1' }]);
+        assert.equal(composerInstalledVersions(dir).get('langsys/langsys-php'), '1.3.1',
+            'Composer 1\'s bare array must be read too');
+
+        // Shapes the strip must leave alone.
+        write({ packages: [
+            { name: 'a/bare', version: '2.0.1' },
+            { name: 'a/dev', version: 'dev-main' },
+            { name: 'a/devv', version: 'dev-v2' },
+            { name: 'a/rc', version: 'v1.0.0-rc1' },
+            { name: 'a/pre', version: '1.0.0-beta.1' },
+            { name: 'a/alias', version: '9999999-dev' },
+            { name: 'a/nameless' },
+        ] });
+        const m = composerInstalledVersions(dir);
+        assert.equal(m.get('a/bare'), '2.0.1');
+        assert.equal(m.get('a/dev'), 'dev-main', 'a branch install is not a version and must not be rewritten');
+        assert.equal(m.get('a/devv'), 'dev-v2', 'the strip anchors on a leading v, not any v');
+        assert.equal(m.get('a/rc'), '1.0.0-rc1');
+        assert.equal(m.get('a/pre'), '1.0.0-beta.1');
+        assert.equal(m.get('a/alias'), '9999999-dev');
+        assert.ok(!m.has('a/nameless'), 'an entry with no version must be skipped, not stored as undefined');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('tree: a Composer dev checkout is not reported as the SDK shipping a bad skill', () => {
+    // `dev-main` is what Composer records for a branch or path install, which is
+    // how the PHP SDK's own lane works locally. It carries no version, so
+    // cmpVersion reads it as 0 and the out-of-step branch fires — telling the
+    // agent to report a bug in the SDK that does not exist.
+    const { dir } = composerProjectWithSkill({ recorded: 'dev-main' });
+    try {
+        install(dir);
+        const d = doctorOn(dir);
+        assert.ok(!/out of step|report the skill/.test(d),
+            'a dev checkout must not be reported as the SDK shipping a mismatched skill');
+        assert.match(d, /development checkout \(dev-main\)/, 'it must say what it saw');
+        assert.match(d, /treat the skill as unverified/, 'and that the comparison did not happen');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('tree: doctor says so when it cannot read the installed version at all', () => {
+    // A hand-vendored tree, a custom `config.vendor-dir`, or an unreadable file:
+    // the version is unknown. Reporting "matches" there asserts agreement
+    // between a version and an absence, which is a pass that cannot fail.
+    const { dir } = composerProjectWithSkill();
+    try {
+        install(dir);
+        rmSync(join(dir, 'vendor', 'composer', 'installed.json'));
+        const d = doctorOn(dir);
+        assert.ok(!/skill langsys-php@2\.0\.1 matches/.test(d),
+            'an unknown version must not be reported as a match');
+        assert.match(d, /could not read the installed version of langsys\/langsys-php/);
+        assert.match(d, /NOT checked against it/, 'and it must say the comparison did not happen');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('tree: a manifest that recorded no version is told to re-install, not called a match', () => {
+    // The upgrade path from 0.3.0, which could not read a Composer version: the
+    // manifest on disk has `installed: null` while the package is readable now.
+    const { dir } = composerProjectWithSkill();
+    try {
+        install(dir);
+        const p = join(dir, '.langsys', 'skills.json');
+        const m = JSON.parse(readFileSync(p, 'utf8'));
+        m.skills.find((s) => s.name === 'langsys-php').installed = null;
+        writeFileSync(p, JSON.stringify(m));
+        const d = doctorOn(dir);
+        assert.match(d, /copied without recording which version/);
+        assert.match(d, /Re-run/, 'and it must name the fix');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('the installer rejects a bare path instead of writing to the current directory', () => {
+    // `doctor <path>` and `scan <path>` both work, so `install <path>` is the
+    // natural thing to type. It used to be dropped and the payload written to
+    // cwd — which installed this repo's own payload into this repo during a
+    // review. The tool that writes files must not guess where.
+    const dir = mkdtempSync(join(tmpdir(), 'langsys-stray-'));
+    try {
+        let code = 0, out = '';
+        try {
+            execFileSync('node', [join(root, 'src/bin/install.mjs'), dir],
+                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], cwd: dir });
+        } catch (e) { code = e.status; out = (e.stdout ?? '') + (e.stderr ?? ''); }
+
+        assert.equal(code, 2, 'a bare path must be an error, not a silent default to cwd');
+        assert.match(out, /unexpected argument/);
+        assert.match(out, new RegExp(`--dir=${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+            'and it must show the command the user meant');
+        assert.ok(!existsSync(join(dir, '.langsys')),
+            'nothing may be written when the target was ambiguous');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
 });
 
 test('tree: the preamble source exists, and the entry skill does not carry a copy', () => {
@@ -1962,13 +2194,6 @@ test('tree: the payload tells agents never to add the core in a React or Vue app
 });
 
 // ── Review fixes: each of these fails without its fix ─────────────────────────
-
-const doctorOn = (d, extra = []) => {
-    try {
-        return execFileSync('node', [join(root, 'src/bin/doctor.mjs'), d, ...extra],
-            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-    } catch (e) { return (e.stdout ?? '') + (e.stderr ?? ''); }
-};
 
 test('tree: uninstalling an SDK removes its copied skill', () => {
     // Without pruning the copy is wrong in BOTH directions at once: the agent

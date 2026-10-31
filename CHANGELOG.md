@@ -11,6 +11,54 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## 0.3.1 - 2026-10-31
+
+`langsys/langsys-php` 2.0.1 and `langsys-js-svelte` 4.0.2 ship their own skills, so the entry
+skill routes those projects to them, and `doctor` can tell whether a copied PHP skill is current.
+Every SDK that has a skill now ships it; the guides remaining under `pinned/` are for the four
+packages that do not — React, Vue, Laravel and the JS server SDK.
+
+### Fixed
+
+- **A Composer package's installed version is read from `vendor/composer/installed.json`.** A
+  package in `vendor/` carries no `version` in its own composer.json — declaring one there is
+  discouraged, and `langsys/langsys-php` does not — so Composer records what resolution settled
+  on in `installed.json` instead. Reading the package's manifest left the version unknown, and
+  `doctor` then reported a copied PHP skill as matching against nothing: the one comparison it
+  exists to make was a pass that could not fail. Both layouts are read, Composer 2's
+  `{packages: […]}` and Composer 1's bare array.
+- **Composer's recorded version is the git tag, so its leading `v` is stripped.** `installed.json`
+  holds `v2.0.1` while a skill's frontmatter declares `2.0.1`. `doctor`'s output and the
+  `installed` field in `.langsys/skills.json` stay bare semver, like every other version it
+  prints. A recorded version that does not begin with a digit is left alone, because it is not
+  a version.
+- **PHP and Svelte projects are routed to their own skills, not to the packages' READMEs.** The
+  entry skill's fallback list named `langsys/langsys-php` and `langsys-js-svelte` among the
+  packages shipping no skill of their own. Both now ship one, so no package is in that list.
+- **The measured version table was stale in a way a reader cannot check.** `langsys-js-svelte`
+  is published at 4.0.2 and declares `^0.7.1`, not 4.0.0 and `^0.7.0`, and `langsys-js-typescript`
+  at 0.7.1, not 0.7.0. Re-measured by installing each published binding: Svelte resolves core
+  **0.7.1**; React `^0.6.5` and Vue `^0.6.5` are unchanged at **0.6.5**.
+- **A Composer dev checkout is no longer reported as the SDK shipping a broken skill.** Composer
+  records a branch or path install as `dev-main`, which carries no version; comparing it anyway
+  reported the package and its skill as out of step and told the agent to report an SDK bug that
+  does not exist. It is now reported as a dev checkout, with the comparison explicitly not made.
+- **`doctor` says when it could not read the installed version, instead of reporting a match.**
+  A hand-vendored tree, a custom `config.vendor-dir` or an unreadable file leaves the version
+  unknown; the check used to print a green `matches … ` line against the absence. A skill copied
+  before this release recorded no Composer version at all, and now asks for a re-install.
+- **`npx langsys-skill install <path>` is an error naming `--dir=<path>`, not a silent install
+  into the current directory.** `doctor` and `scan` both take their root as a positional
+  argument, so a bare path is the natural thing to type — and it was dropped without a word by
+  the tool that writes files.
+- **`sdk-versions.md` enumerates every state `doctor` can report** for a copied skill, not three
+  of them. Two of the undocumented ones became reachable with this release, and neither is a
+  match: an unreadable version and a development checkout both mean the skill is **unverified**.
+- **A Laravel app is routed to `pinned/laravel.md`, never to the `langsys-php` core skill.**
+  `langsys-php-laravel@1.0.0` constrains the core to `^1.3`, so it installs PHP SDK 1.3.x while
+  the core skill describes 2.0 — the same caret trap as React and Vue on the JavaScript side.
+  The routing table had named a `langsys-laravel` skill that no package ships.
+
 ## 0.3.0 - 2026-10-30
 
 The skill becomes a tree that mirrors the SDKs. Each SDK ships its own skill, written by the

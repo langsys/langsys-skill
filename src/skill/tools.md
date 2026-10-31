@@ -33,8 +33,9 @@ wrong. It reports:
 
 - **Which core each installed binding resolved to**, which is what decides whether a given
   rule applies at all — [sdk-versions.md](./sdk-versions.md)
-- **Whether each installed skill matches its package**, as `match`, `stale` or `edited`. A
-  stale skill describes a version you do not have; re-run `npx langsys-skill install`
+- **Whether each installed skill matches its package** — and, when it cannot tell, that it
+  could not. The full set of answers is in [sdk-versions.md](./sdk-versions.md); a stale skill
+  describes a version you do not have, so re-run `npx langsys-skill install`
 - Installed SDK versions against the ranges this skill was verified against, and peer floors
 - The environment-variable prefix against the detected bundler
 - The key type, and a write key in a production configuration
@@ -48,6 +49,7 @@ wrong. It reports:
 | declared base range caps below the floor | A caret that caps below a fix delivers that fix to nobody. The binding is correct; the **range** is not |
 | skill `stale` | Re-run the installer. Until then the skill describes another version |
 | skill `edited` | A copy was edited in place. The package's own copy is authoritative |
+| version unreadable, or a dev checkout | Nothing was compared. The skill is unverified here — confirm the version by hand |
 | env prefix missing or wrong | The key resolves to `undefined` at runtime with no build error |
 | write key in production | Registers phrases from live traffic; the pollution is permanent and shared |
 | MCP registered for THIS project only | The next project silently lacks it; `--scope=user` is what you want |

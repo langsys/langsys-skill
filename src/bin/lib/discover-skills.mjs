@@ -38,18 +38,57 @@ export function readSkillHead(text) {
     };
 }
 
-function readOne(dir, origin) {
+/**
+ * What Composer actually installed, keyed by package name.
+ *
+ * A Composer package in `vendor/` has NO `version` in its own composer.json —
+ * declaring one there is discouraged, and langsys/langsys-php does not. Composer
+ * resolves the version at install time and records it in
+ * `vendor/composer/installed.json`, so that file is the only place the installed
+ * version exists. Without reading it there is nothing to compare a copied skill
+ * against, and doctor cannot tell a stale PHP skill from a current one — which
+ * is the single thing it is there for.
+ *
+ * Two shapes are read because a project's Composer era is not ours to choose:
+ * Composer 2 writes `{ packages: [...] }`, Composer 1 wrote a bare array.
+ *
+ * The recorded version is the git TAG, so it arrives with Composer's `v` prefix
+ * (`v2.0.1`) while a skill's frontmatter declares bare semver (`2.0.1`). Strip
+ * it here: every version doctor prints is bare, and an operator comparing the
+ * two by eye is the actual consumer of this string.
+ */
+export function composerInstalledVersions(projectRoot) {
+    const out = new Map();
+    const p = join(projectRoot, 'vendor', 'composer', 'installed.json');
+    if (!existsSync(p)) return out;
+    let parsed;
+    try { parsed = JSON.parse(readFileSync(p, 'utf8')); } catch { return out; }
+    const packages = Array.isArray(parsed) ? parsed : parsed?.packages;
+    if (!Array.isArray(packages)) return out;
+    for (const entry of packages) {
+        if (typeof entry?.name !== 'string' || typeof entry?.version !== 'string') continue;
+        out.set(entry.name.toLowerCase(), entry.version.replace(/^v(?=\d)/, ''));
+    }
+    return out;
+}
+
+function readOne(dir, origin, recordedVersion = null) {
     const entry = join(dir, 'skill', 'SKILL.md');
     if (!existsSync(entry)) return null;
     let head;
     try { head = readSkillHead(readFileSync(entry, 'utf8')); } catch { return null; }
     if (!head?.name) return null;
-    let installed = null;
-    for (const manifest of ['package.json', 'composer.json']) {
-        const p = join(dir, manifest);
-        if (!existsSync(p)) continue;
-        try { installed = JSON.parse(readFileSync(p, 'utf8')).version ?? null; } catch { /* unreadable */ }
-        if (installed) break;
+    // A version Composer recorded wins over anything the package declares about
+    // itself: it is what resolution settled on, and a package that declares its
+    // own version can disagree with what is on disk.
+    let installed = recordedVersion;
+    if (!installed) {
+        for (const manifest of ['package.json', 'composer.json']) {
+            const p = join(dir, manifest);
+            if (!existsSync(p)) continue;
+            try { installed = JSON.parse(readFileSync(p, 'utf8')).version ?? null; } catch { /* unreadable */ }
+            if (installed) break;
+        }
     }
     return {
         name: head.name,
@@ -105,11 +144,13 @@ export function discoverSkills(projectRoot) {
 
     const vendor = join(projectRoot, 'vendor', 'langsys');
     if (existsSync(vendor)) {
+        const recorded = composerInstalledVersions(projectRoot);
         let entries = [];
         try { entries = readdirSync(vendor, { withFileTypes: true }); } catch { /* unreadable */ }
         for (const e of entries) {
             if (!e.isDirectory() && !e.isSymbolicLink()) continue;
-            const found = readOne(join(vendor, e.name), `langsys/${e.name}`);
+            const name = `langsys/${e.name}`;
+            const found = readOne(join(vendor, e.name), name, recorded.get(name.toLowerCase()) ?? null);
             if (found) all.push({ ...found, depth: 0 });
         }
     }

@@ -2,8 +2,10 @@
 
 Every load-bearing claim the skill makes, checked against the **published artifact users actually install** — `npm pack <pkg>@<version>` / Packagist — never a sibling working tree (PLAN.md §1).
 
-**Verified:** snapshot table captured **2026-10-30** for `langsys-skill@0.3.0`; the entries
-below it each name the version they were checked against, on the date they were written.
+**Verified:** snapshot table captured **2026-10-30** for `langsys-skill@0.3.0`, with the
+`langsys-js-typescript`, `langsys-js-svelte` and `langsys/langsys-php` rows re-read from their
+published artifacts on **2026-10-31** for `0.3.1`; the entries below it each name the version they were checked
+against, on the date they were written.
 
 > A single date on a living file goes stale silently, which is this file's own failure class.
 > Treat the date as belonging to the **snapshot table**, not to every claim — each entry names
@@ -34,18 +36,17 @@ are kept as the record of how they were found, not as current guidance.
 
 | Package | Published | Peer deps | Depends on base | Guidance comes from |
 |---|---|---|---|---|
-| `langsys-js-typescript` | **0.7.0** | — | `intl-messageformat@^11.2.7` | its own `langsys-typescript` skill (ships 0.7.1) |
-| `langsys-js-svelte` | **4.0.0** | `svelte@^5`, `@sveltejs/kit@^2.10` (optional) | `^0.7.0` | its own `langsys-svelte` skill (ships 4.0.1) |
+| `langsys-js-typescript` | **0.7.1** | — | `intl-messageformat@^11.2.7` | its own `langsys-typescript` skill, shipped in 0.7.1 |
+| `langsys-js-svelte` | **4.0.2** | `svelte@^5`, `@sveltejs/kit@^2.10` (optional) | `^0.7.1` | its own `langsys-svelte` skill, shipped in 4.0.2 |
 | `langsys-js-react` | **0.6.7** | `react@^18 \|\| ^19` | `^0.6.5` | **pinned here**, `pinned/react.md` |
 | `langsys-js-vue` | **0.2.1** | `vue@^3.4` | `^0.6.5` | **pinned here**, `pinned/vue.md` |
-| `langsys/langsys-php` | **2.0.0** | PHP ≥7.4 + ext-intl | — | its own `langsys-php` skill (ships 2.0.1) |
+| `langsys/langsys-php` | **2.0.1** | PHP ≥7.4 + ext-intl | — | its own `langsys-php` skill, shipped in 2.0.1 |
 | `langsys/langsys-php-laravel` | **1.0.0** | PHP ≥8.1, Laravel 10–12 | `langsys/langsys-php@^1.3` | **pinned here**, `pinned/laravel.md` |
 | `langsys-js-server` | **0.1.0** | none (`parse5`, `intl-messageformat`), Node ≥18 | — (does not depend on the base SDK) | **pinned here**, `pinned/js-server.md` |
 
-Svelte 4.0.0 and PHP 2.0.0 are published but their skills are not, so this package carries **no
-guide for them**: the versions its former guides described (3.6.x and 1.x) are not what a
-project installs now, and their READMEs are accurate. `sdk-versions.md` routes to those READMEs
-and says why.
+**Every SDK above that has a skill now ships it**, so this package carries no guide for any of
+them. The pinned guides that remain are for the four packages with no skill of their own:
+React, Vue, Laravel and `langsys-js-server`.
 
 `langsys-js-server` is the one package here that is **not** a binding over `langsys-js-typescript` —
 it reimplements translation against finished HTML, which is why it has no base-SDK dependency and no
@@ -1796,3 +1797,115 @@ something already backstopped. Nothing backstops a missing path, so it fails eve
 
 Both modes are tested in both directions: forcing the sweep's leniency into the gate, and the
 gate's strictness into the sweep, each makes the test fail.
+
+## 0.3.1 — the PHP skill lands, and a Composer package has no version to read
+
+Measured **2026-10-31** against the published artifacts: `langsys/langsys-php` **2.0.1** from
+Packagist's dist for `f032e9f9`, and `langsys-js-typescript` **0.7.1** and `langsys-js-svelte`
+**4.0.2** from `npm pack`.
+
+### Both published skills satisfy the contract
+
+| Skill | Declares | Preamble | Inbound links |
+|---|---|---|---|
+| `langsys-php`, in `langsys/langsys-php@2.0.1` | `2.0.1` | byte-identical, 917 bytes | 4, all resolve |
+| `langsys-typescript`, in `langsys-js-typescript@0.7.1` | `0.7.1` | byte-identical, 917 bytes | 4, all resolve |
+| `langsys-svelte`, in `langsys-js-svelte@4.0.2` | `4.0.2` | byte-identical, 917 bytes | 2, all resolve |
+
+`skill-contract --source=` was run against each **published artifact**, not a working tree: 0
+violations. The PHP skill carries `SKILL.md`, `preamble.md` and eleven topic files; the Svelte
+skill, `SKILL.md`, `preamble.md` and five.
+
+Each SDK keeps its preamble in its `SKILL.md`, where an agent reads it. `preamble.md` beside it
+is the unmarked copy; only this package's `src/skill/preamble.md` carries the markers that make
+a block canonical, which is what the contract check compares against.
+
+### A Composer package carries no version of its own
+
+```
+vendor/langsys/langsys-php/composer.json        no `version` key
+vendor/composer/installed.json                  "version": "v2.0.1"
+```
+
+From a real `composer install` of `langsys/langsys-php:2.0.1`. Declaring `version` in a
+package's own composer.json is discouraged and this package does not, so **the installed version
+exists only in `installed.json`**, which is where Composer records what resolution settled on.
+
+Two consequences, both of which were live:
+
+1. **Reading the package's manifest yields nothing**, so `doctor` had no version to compare a
+   copied PHP skill against — and announced `matches langsys/langsys-php` against an absent
+   value. The check could not fail, which is this repo's recurring failure class: *a check that
+   cannot observe the state it asserts fails by passing.*
+
+   Reading `installed.json` removes the usual cause of that state, **not the state itself**: a
+   hand-vendored tree, a custom `config.vendor-dir` or an unreadable file all still leave the
+   version unknown. So the absence is now reported in its own right rather than being folded
+   into the match, and the states doctor can report are enumerated in
+   `src/skill/sdk-versions.md` instead of being described there as three.
+2. **The recorded version is the git tag**, so it carries a leading `v` that frontmatter does
+   not. It is stripped, and what that buys is the reported string: `installed` in
+   `.langsys/skills.json` and doctor's own output stay bare semver like every other version it
+   prints.
+
+   **It does not prevent a false "stale".** Measured by removing only the strip: doctor reports
+   `✓ skill langsys-php@2.0.1 matches langsys/langsys-php v2.0.1` — a green check. Both sides of
+   the stale comparison come from `installed.json`, so both carry the `v` and compare equal, and
+   the out-of-step check runs through `cmpVersion`, which already strips a leading non-digit run
+   from both operands.
+
+   The reason that was worth measuring: *`v2.0.1` ≠ `2.0.1`, so the comparison must break* is
+   sound reasoning about the string and wrong about the program, because it never asked where
+   the other operand comes from. This file's rule — prefer executing a claim to reading it —
+   applies to a claim about our own code exactly as it does to an SDK's.
+
+Composer 2 writes `{ packages: [...] }`; Composer 1 wrote a bare array. Both are read, since a
+project's Composer era is not this tool's to choose.
+
+### Laravel is the caret trap, one language over
+
+`langsys/langsys-php-laravel@1.0.0` constrains the core to `^1.3`, so a Laravel app installs
+**PHP SDK 1.3.x** while the `langsys-php` skill describes 2.0. Until 2.0.1 this was inert — no
+PHP skill existed to be routed to wrongly. It is not inert now, and the routing table in
+`sdk-versions.md` had named a `langsys-laravel` skill that no package ships. Laravel is routed
+to `pinned/laravel.md`, exactly as React and Vue are routed away from `langsys-typescript`.
+
+### Svelte's caret moved, and the resolution was re-measured
+
+```
+npm i langsys-js-svelte@4.0.2
+└─┬ langsys-js-svelte@4.0.2
+  └── langsys-js-typescript@0.7.1
+```
+
+4.0.2 declares `^0.7.1`, where 4.0.0 declared `^0.7.0` — so the declared range in
+`sdk-versions.md` was wrong independently of the resolved version, which is the half of that
+table a reader cannot check without installing. React and Vue are unchanged at `^0.6.5` →
+**0.6.5**.
+
+### Two states a version read makes newly reachable
+
+Reading a Composer version turned two dead branches live, and both were wrong on arrival:
+
+- **`dev-main`.** Composer records a branch or path install that way, which is how the PHP SDK's
+  own lane works locally. It survives the `v`-strip intact, as it must — but `cmpVersion` strips
+  every leading non-digit, leaving `NaN`, so the out-of-step branch fired and told the agent to
+  report an SDK bug that does not exist. A recorded version that does not begin with a digit is
+  now reported as a dev checkout, with the comparison explicitly not made.
+- **A manifest with `installed: null`.** The upgrade path from 0.3.0, which could not read a
+  Composer version at all: the copy on disk recorded none while the package is readable now.
+  That now asks for a re-install rather than comparing a version against nothing.
+
+Both were found by review, and each has a test that fails with its fix reverted.
+
+### The installer ignored a bare path, and wrote to the current directory
+
+`doctor <path>` and `scan <path>` both take their root as a positional argument, so
+`install <path>` is the natural thing to type. It was dropped silently — the unknown-option
+filter returns early for anything not starting with `-` — and the payload went to the current
+directory instead, reporting success. This surfaced when a review agent ran it that way and
+installed this repo's payload into this repo.
+
+It is now an error naming the `--dir=` form, because this is the tool that writes files, and the
+quiet version of that mistake puts a payload somewhere nobody asked for. The strictness about
+unknown *options* was already there for the same reason; the positional case was the gap in it.

@@ -45,10 +45,9 @@ wrong quietly.
 
 | Was here | Now |
 |---|---|
-| Svelte, SvelteKit | the `langsys-svelte` skill, in `langsys-js-svelte` |
-| Plain TypeScript | the `langsys-typescript` skill, in `langsys-js-typescript` |
-| PHP | the `langsys-php` skill, in `langsys/langsys-php` |
+| Svelte, SvelteKit | the `langsys-svelte` skill, in `langsys-js-svelte` ≥ 4.0.2 |
+| Plain TypeScript | the `langsys-typescript` skill, in `langsys-js-typescript` ≥ 0.7.1 |
+| PHP | the `langsys-php` skill, in `langsys/langsys-php` ≥ 2.0.1 |
 
-Until one of those ships, its package's README is the answer. As of this release that applies
-to `langsys-js-svelte@4.0.0` and `langsys/langsys-php@2.0.0`: this package's former guides for
-them described 3.6.x and 1.x, so they were removed rather than left to mislead.
+All three ship their skill today, so nothing here stands in for them. Below those versions a
+package carries no skill and there is no guide for it here either, so its README is the answer.

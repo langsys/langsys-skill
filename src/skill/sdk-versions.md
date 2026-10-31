@@ -18,8 +18,8 @@ Measured by installing each published binding into an empty project and reading 
 
 | You install | Published | Declares | **Resolves core** |
 |---|---|---|---|
-| `langsys-js-typescript` | 0.7.0 | — | **0.7.0** |
-| `langsys-js-svelte` | 4.0.0 | `^0.7.0` | **0.7.x** |
+| `langsys-js-typescript` | 0.7.1 | — | **0.7.1** |
+| `langsys-js-svelte` | 4.0.2 | `^0.7.1` | **0.7.1** |
 | `langsys-js-react` | 0.6.7 | `^0.6.5` | **0.6.5** |
 | `langsys-js-vue` | 0.2.1 | `^0.6.5` | **0.6.5** |
 | `langsys-js-svelte` 3.x | 3.6.17 | `^0.6.4` | **0.6.5** |
@@ -29,7 +29,7 @@ Measured by installing each published binding into an empty project and reading 
 move it. Only a new release of the binding can.
 
 **Do not read a binding's own version as a core version.** `langsys-js-react@0.6.7` and
-`langsys-js-svelte@4.0.0` tell you nothing about the core underneath. Only the resolved
+`langsys-js-svelte@4.0.2` tell you nothing about the core underneath. Only the resolved
 dependency does:
 
 ```bash
@@ -73,7 +73,12 @@ exists. Those apps are served by this package's pinned guides instead:
 | React (any meta-framework) | [pinned/react.md](./pinned/react.md) |
 | Vue / Nuxt | [pinned/vue.md](./pinned/vue.md) |
 | Svelte, or plain TypeScript | `langsys-typescript`, then `langsys-svelte` if present |
-| PHP | `langsys-php`, then `langsys-laravel` if present |
+| PHP, any framework but Laravel | `langsys-php` |
+| Laravel | [pinned/laravel.md](./pinned/laravel.md) — **not** `langsys-php` |
+
+**A Laravel app is the same trap one language over.** `langsys-php-laravel@1.0.0` constrains
+the core to `^1.3`, so it installs **PHP SDK 1.3.x**, while the `langsys-php` skill describes
+2.0. Route a Laravel app to the pinned guide, not to the core skill.
 
 ---
 
@@ -84,7 +89,7 @@ Every core and child skill carries its package and version in frontmatter:
 ```yaml
 metadata:
   package: langsys-js-typescript
-  version: 0.7.0
+  version: 0.7.1
 ```
 
 **Compare that against the installed package before relying on the skill.** They can differ
@@ -95,13 +100,21 @@ the skill was copied from a different project.
 node .langsys/bin/doctor.mjs      # compares every installed skill against its package
 ```
 
-`doctor` reports three states, and the middle one is the one to act on:
+`doctor` reports one of these per copied skill. Only the first means the skill you are reading
+is the right one:
 
 | State | Meaning |
 |---|---|
 | **match** | The skill describes the installed version. Proceed |
 | **stale** | The versions differ. Re-run `npx langsys-skill install`, and until then treat the skill as a guide to a version you do not have |
 | **edited** | A copied skill's contents no longer match the package's own. Someone edited the copy; the SDK's own copy is authoritative |
+| **package gone** | A skill is installed for a package the project no longer has. Re-run the installer to drop it |
+| **version unreadable** | Nothing was compared. The skill is unverified here — confirm the version by hand before relying on it |
+| **development checkout** | The package is installed from a branch or a path, so it carries no version to compare. Also unverified |
+| **out of step** | The skill declares a different version than the release it ships inside. Trust the package; that one is the SDK's bug to report |
+
+The last three are the ones to read carefully, because none of them is a failure of the
+project — and none of them is a match either. **An unverified skill is not a verified one.**
 
 A skill is **copied, not linked**, so an upgrade never silently rewrites it — which is why the
 stale state exists at all, and why re-running the installer is the fix.
@@ -117,7 +130,6 @@ Not every SDK has had a release carrying one yet. Two cases, and only one of the
   that is one minor behind looks authoritative and is wrong in exactly the places that fail
   silently.
 
-Today that second case is `langsys-js-svelte@4.0.0` and `langsys/langsys-php@2.0.0`: this
-package's older guides for them were written against 3.6.x and 1.x, so they are gone rather
-than left to mislead. Their READMEs are accurate and are the right place to look until their
-own skills ship.
+Every package that ships no skill today has a pinned guide here — React, Vue, Laravel and the
+JS server SDK. So the second case is what a project on some *other* version of one of those
+lands in, and the answer there is the package's README.
