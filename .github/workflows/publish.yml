@@ -60,9 +60,13 @@ jobs:
       # never pass silently, so this skips only when the registry already holds
       # the SAME artifact this tag builds, and fails loudly when it does not.
       #
-      # Compared by CONTENTS, not by the tarball's shasum: the same files packed
-      # by a different npm version gzip to different bytes, so a shasum check
-      # would eventually block a legitimate release with a false mismatch.
+      # Compared by CONTENTS rather than by the tarball's shasum. `npm pack` is
+      # in fact reproducible across npm versions for this package — this runner's
+      # `npm@latest` packed 0.3.0 to the same shasum that npm 10.9.2 published it
+      # with. The content comparison is used anyway because it does not depend on
+      # that continuing to hold: gzip output is not a contract, and the failure it
+      # would produce is a false "this tag disagrees with its release", which
+      # blocks a correct release and is the expensive direction to be wrong in.
       - name: Is this version already published?
         id: published
         run: |
