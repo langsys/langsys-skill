@@ -53,4 +53,55 @@ jobs:
           test "$(grep -c '^package/src/lint/rules/.*\.yml$' /tmp/files.txt)" -ge 22 \
             || { echo "::error::ruleset incomplete in the tarball"; exit 1; }
 
-      - run: npm publish --provenance
+      # A release can be created for a version that is already on the registry —
+      # a re-run, or a release backfilled for a tag that was published another
+      # way. That is not a failure, and `npm publish` erroring with a conflict
+      # says nothing useful. But publishing is also the step whose absence must
+      # never pass silently, so this skips only when the registry already holds
+      # the SAME artifact this tag builds, and fails loudly when it does not.
+      #
+      # Compared by CONTENTS, not by the tarball's shasum: the same files packed
+      # by a different npm version gzip to different bytes, so a shasum check
+      # would eventually block a legitimate release with a false mismatch.
+      - name: Is this version already published?
+        id: published
+        run: |
+          set -euo pipefail
+          PKG=$(node -p "require('./package.json').name")
+          V=$(node -p "require('./package.json').version")
+
+          if ! npm view "$PKG@$V" version >/dev/null 2>&1; then
+            echo "::notice::$PKG@$V is not on the registry — publishing it."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          work=$(mktemp -d)
+          mkdir -p "$work/pub" "$work/mine"
+          ( cd "$work/pub" && npm pack "$PKG@$V" --silent | xargs -I{} tar xzf {} && rm -f ./*.tgz )
+          tgz=$(npm pack --silent --pack-destination "$work")
+          tar xzf "$work/$tgz" -C "$work/mine"
+
+          fingerprint() {
+            ( cd "$1/package" && find . -type f | sort | xargs shasum -a 256 | shasum -a 256 | cut -d' ' -f1 )
+          }
+          live=$(fingerprint "$work/pub")
+          mine=$(fingerprint "$work/mine")
+
+          if [ "$live" != "$mine" ]; then
+            echo "::error::$PKG@$V is already published, but its contents differ from what this tag builds."
+            echo "  published: $live"
+            echo "  this tag : $mine"
+            echo "  The released package and this tag are not the same thing. Do not re-tag over it;"
+            echo "  publish a new version instead."
+            exit 1
+          fi
+
+          echo "::notice::$PKG@$V is already published with identical contents — skipping the publish."
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.published.outputs.skip != 'true'
+        run: npm publish --provenance
+
+      - if: steps.published.outputs.skip == 'true'
+        run: echo "Publish skipped — this version is already on the registry, unchanged."
