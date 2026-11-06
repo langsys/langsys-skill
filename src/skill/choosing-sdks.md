@@ -72,18 +72,22 @@ Stated here; each core skill gives the API for them and the reasons in full.
 1. **Never build a phrase string.** An interpolated phrase registers a new catalog entry per
    value, permanently, in state every SDK on the project shares. No SDK can detect it. Pass
    values as params.
-2. **The source text is the key.** No catalog files, no dot-keys — with one deliberate
+2. **Never write a plural or a gender form: Langsys makes them.** Write the sentence flat, with
+   the count or the name as a `{placeholder}`, and Langsys makes each language's plural and
+   gender forms, the base language included. A sentence that says something different at zero,
+   or that differs in the source language itself (his or her), is its own phrase, chosen in code.
+3. **The source text is the key.** No catalog files, no dot-keys — with one deliberate
    exception, Laravel, where your lang files supply the source text and the key resolves to it.
-3. **Phrase first, category second.** Both orders typecheck when the phrase has no
+4. **Phrase first, category second.** Both orders typecheck when the phrase has no
    placeholder, so the compiler will not catch a swap.
-4. **Choose the primitive by asking whether a tag boundary belongs to the language or to the
+5. **Choose the primitive by asking whether a tag boundary belongs to the language or to the
    layout.** Plain text is a plain call. One sentence containing inline markup is kept whole.
    A block of separate units is split. Getting this wrong shreds sentences and makes plurals
    unexpressible in Russian, Arabic and Polish, while looking perfect in the base language.
-5. **Untranslated text renders as its source.** The base language always looks right, which is
+6. **Untranslated text renders as its source.** The base language always reads as written, which is
    why most mistakes here are invisible until someone switches locale or reads what was
    registered.
-6. **The server decides whether a session may register**, not the key's type —
+7. **The server decides whether a session may register**, not the key's type —
    [projects-and-keys.md](./projects-and-keys.md).
-7. **Categorize only when the same words legitimately mean different things** —
+8. **Categorize only when the same words legitimately mean different things** —
    [categories.md](./categories.md).

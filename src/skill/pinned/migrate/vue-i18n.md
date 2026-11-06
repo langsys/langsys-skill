@@ -67,11 +67,11 @@ vue-i18n uses pipe-separated variants; Langsys makes the forms from one flat phr
 { "car": "no cars | one car | {count} cars" }
 ```
 
-```ts
-count === 0 ? t('No cars', 'Vehicles') : t('{count} cars', 'Vehicles', { count })
+```vue
+<p>{{ count === 0 ? t('no cars', 'Vehicles') : t('{count} cars', 'Vehicles', { count }) }}</p>
 ```
 
-The flat phrase gives every language its singular and plural forms, the base language included. The zero variant says something different, so it is its own phrase. vue-i18n's pipe form is **position-based** and cannot express Russian's four or Arabic's six categories; Langsys makes them per locale without them appearing in source. This is usually an upgrade, not just a port.
+The flat phrase gives every language its singular and plural forms, the base language included: English renders `1 car` where the old file said `one car`. The zero variant says something different, so it is its own phrase. In script, the same expression uses `t.value(...)`. vue-i18n's pipe form is **position-based** and cannot express Russian's four or Arabic's six categories; Langsys makes them per locale without them appearing in source. This is usually an upgrade, not just a port.
 
 ## SFC `<i18n>` blocks
 

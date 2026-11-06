@@ -509,6 +509,22 @@ test('markup: a Svelte project with langsysPreprocess() is not told its braces a
 
 // ── Installer ────────────────────────────────────────────────────────────────
 
+test('every list of the rules every SDK shares says never to write a plural or a gender form', () => {
+    const rule = /Never write a plural or a gender form/;
+    for (const file of ['SKILL.md', 'choosing-sdks.md']) {
+        assert.match(readFileSync(join(root, 'src/skill', file), 'utf8'), rule, `${file} must carry the rule`);
+    }
+
+    // Codex, Gemini and Cursor get the installer's own copy of the rules, not SKILL.md.
+    const dir = mkdtempSync(join(tmpdir(), 'langsys-rules-'));
+    execFileSync('node', [join(root, 'src/bin/install.mjs'), `--dir=${dir}`, '--host=codex,gemini,cursor'], { encoding: 'utf8' });
+    for (const file of ['AGENTS.md', 'GEMINI.md', '.cursor/rules/langsys.mdc']) {
+        assert.match(readFileSync(join(dir, file), 'utf8'), rule, `${file} must carry the rule`);
+    }
+
+    rmSync(dir, { recursive: true, force: true });
+});
+
 test('installer is idempotent and preserves user content', () => {
     const dir = mkdtempSync(join(tmpdir(), 'langsys-inst-'));
     mkdirSync(join(dir, '.claude'), { recursive: true });

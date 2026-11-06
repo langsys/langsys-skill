@@ -34,7 +34,7 @@ Note the second example: the `t()` call is **lexically inside markup**, and `{na
 It is not an inconsistency waiting to be cleaned up:
 
 - **`t()` phrases are JS strings.** No compiler stands between them and the SDK, so `{name}` arrives intact.
-- **ICU MessageFormat is brace-based by specification.** `{count, plural, one {# item} other {# items}}` cannot use a different delimiter.
+- **The translations Langsys sends are ICU MessageFormat**, which is brace-based by specification, so the placeholder a translation fills is `{name}` and cannot use a different delimiter.
 
 So "one syntax everywhere" is unreachable. Markup is the exception because markup is compiled.
 

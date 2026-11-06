@@ -10,8 +10,8 @@ metadata:
 
 Langsys is a realtime translation manager. **Phrases are discovered from your running app and
 the source text is the key** — there are no catalog files in your repository, and no message
-ids to invent. Untranslated text renders as its source, so the base language always looks
-right.
+ids to invent. Untranslated text renders as its source, so the base language always reads
+as written.
 
 That last property is why most Langsys mistakes are invisible. They do not break the page;
 they register the wrong thing, and someone finds out weeks later in another language.
@@ -86,8 +86,9 @@ with the count or the name as a `{placeholder}`. Langsys makes each language's p
 gender forms from it and the SDK renders the one the count selects. That includes your base
 language: Langsys runs the same plural check on the base-language text, so English renders
 `You have 1 new message` with no ICU in English either. Until a phrase's check has run, the
-base language shows the sentence as written. A sentence that says something different at zero
-is its own phrase, chosen in code.
+base language shows the sentence as written. A sentence that says something different at zero,
+or that differs in the source language itself (his or her, iOS or Android), is its own phrase,
+chosen in code.
 
 ```
 t('You have {count} new messages', 'Inbox', { count })                                    ✅
@@ -95,10 +96,12 @@ translate('You have {count} new messages', null, 'Inbox', null, ['count' => $cou
 t('{count, plural, one {# new message} other {# new messages}}', 'Inbox', { count })       ❌ ICU by hand
 ```
 
-The skills in `langsys-js-typescript` 0.7.1, `langsys-js-svelte` 4.0.2 and `langsys/langsys-php`
-2.0.1 show plurals written by hand in ICU; follow this rule there too. On `langsys/langsys-php`
-1.x, which Laravel apps run, the API sends each plural as its `other` form in every language;
-write the sentence flat all the same.
+The skills in `langsys-js-typescript` 0.7.1 (which `langsys-js-svelte` 4.0.2 also reads) and
+`langsys/langsys-php` 2.0.1, and the `langsys-php-laravel` 1.0.0 README, show plurals written by
+hand in ICU; follow this rule there too. On `langsys/langsys-php` 1.x, which Laravel apps run,
+the API flattens each plural to the one form its language uses for several things (`other` in
+English, `many` in Russian, `few` in Arabic) and a select to its `other` branch; write the
+sentence flat all the same.
 
 **3. The source text is the key.** No `locales/en.json`, no `messages/`, no dot-keys.
 `t('home.welcome')` registers the literal string `home.welcome`. If a project being migrated

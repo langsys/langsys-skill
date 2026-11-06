@@ -387,22 +387,24 @@ t(article.title, 'Blog')             ✅      passing content through is not bui
 \`\`\`
 The test is **cardinality, not syntax**: per-visitor values pollute, a bounded editorial set is the content you meant to translate. Copy from a CMS, a database or a third-party API needs no special handling — the client SDK treats it exactly like copy in the component.
 
-**2. The source text is the key.** No \`locales/en.json\`, no dot-keys. \`t('home.welcome')\` registers the literal string "home.welcome". Laravel is the deliberate exception: there the key resolves to its line in your base-language file, and that sentence is the phrase.
+**2. Never write a plural or a gender form: Langsys makes them.** Write the sentence flat, with the count or the name as a placeholder (\`t('You have {count} new messages', 'Inbox', { count })\`), and Langsys makes each language's plural and gender forms, the base language included. A sentence that says something different at zero, or that differs in the source language itself, is its own phrase, chosen in code. The skills in \`langsys-js-typescript\` 0.7.1 and \`langsys/langsys-php\` 2.0.1, and the \`langsys-php-laravel\` 1.0.0 README, show ICU written by hand; follow this rule instead.
 
-**3. Phrase first, category second** — \`t(phrase, category?, params?)\`. Both orders typecheck; the compiler will not catch a reversal.
+**3. The source text is the key.** No \`locales/en.json\`, no dot-keys. \`t('home.welcome')\` registers the literal string "home.welcome". Laravel is the deliberate exception: there the key resolves to its line in your base-language file, and that sentence is the phrase.
 
-**4. \`%name%\` in markup, \`{name}\` in \`t()\` strings.** Framework compilers eat \`{name}\` in markup before the SDK sees it. Silent failure — the base language still looks correct. Inside a \`t()\` string literal \`{name}\` is right, even when that call sits inside markup. (Svelte 4's build transform changes this one; its own skill says so.)
+**4. Phrase first, category second** — \`t(phrase, category?, params?)\`. Both orders typecheck; the compiler will not catch a reversal.
 
-**5. Pick the right primitive**, by asking whether a tag boundary belongs to the language or the layout.
+**5. \`%name%\` in markup, \`{name}\` in \`t()\` strings.** Framework compilers eat \`{name}\` in markup before the SDK sees it. Silent failure — the base language still looks correct. Inside a \`t()\` string literal \`{name}\` is right, even when that call sits inside markup. (Svelte 4's build transform changes this one; its own skill says so.)
+
+**6. Pick the right primitive**, by asking whether a tag boundary belongs to the language or the layout.
 - a plain \`t()\` call — plain string, no markup
 - the keep-together primitive — ONE sentence containing inline markup
 - the splitting primitive — a BLOCK of markup, tokenized per node
 
 Splitting a sentence that contains \`<strong>\` shreds it and makes the plural unexpressible in Russian, Arabic and Polish, while rendering perfectly in the base language.
 
-**6. The server decides whether a session may register**, not the key's type. An answer without that decision is read-only even for a write key; an \`ip_write\` key writes only from an allow-listed address; an app behind a login needs per-user write grants. A read-only session reports a page's URL and Langsys records it — **recording is not registering**, and nothing reaches the catalog until a write-enabled session renders the page.
+**7. The server decides whether a session may register**, not the key's type. An answer without that decision is read-only even for a write key; an \`ip_write\` key writes only from an allow-listed address; an app behind a login needs per-user write grants. A read-only session reports a page's URL and Langsys records it — **recording is not registering**, and nothing reaches the catalog until a write-enabled session renders the page.
 
-**7. Write key in development, read-only or \`ip_write\` in production**, and match the env var prefix to the bundler.
+**8. Write key in development, read-only or \`ip_write\` in production**, and match the env var prefix to the bundler.
 
 ## Procedure
 

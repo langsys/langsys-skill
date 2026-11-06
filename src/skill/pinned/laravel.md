@@ -52,6 +52,11 @@ That is not a contradiction. The key resolves to its line in your **base-languag
 Resolution order for `__()`, `trans()`, `trans_choice()` and `@lang`: the catalog, then your
 lang files, then the source. `t()` and `@t` are the same functions under shorter names.
 
+**Never write ICU in a phrase.** The package README shows `{count, plural, …}` written by hand;
+write the sentence flat instead, as rule 2 of the entry skill says. On `langsys/langsys-php`
+1.x the API flattens each plural to the form its language uses for several things, so English
+shows `1 new messages` until the Laravel package runs on 2.x.
+
 ## Registration happens at sync, not on a request
 
 ```bash

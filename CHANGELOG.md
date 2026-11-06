@@ -22,14 +22,24 @@ rule every SDK shares, and the pinned guides stop teaching plurals written by ha
 - **A new rule 2: never write a plural or a gender form.** Write the sentence flat with its
   `{placeholders}`; Langsys runs the same plural check on the base-language text, so English
   renders `You have 1 new message` with no ICU in English either, once the phrase has been
-  checked. A sentence that says something different at zero is its own phrase. The rule also
-  says that the skills in `langsys-js-typescript` 0.7.1, `langsys-js-svelte` 4.0.2 and
-  `langsys/langsys-php` 2.0.1 show ICU written by hand, and that on `langsys/langsys-php` 1.x,
-  which Laravel apps run, each plural arrives as its `other` form. The later rules are 3 to 8.
+  checked. A sentence that says something different at zero, or that differs in the source
+  language itself, is its own phrase. The rule also says that the skills in
+  `langsys-js-typescript` 0.7.1 and `langsys/langsys-php` 2.0.1 and the `langsys-php-laravel`
+  1.0.0 README show ICU written by hand, and that on `langsys/langsys-php` 1.x, which Laravel
+  apps run, the API flattens each plural to the one form its language uses for several things.
+  The later rules are 3 to 8. The same rule is in `choosing-sdks.md` and in the rules the
+  installer writes for Codex, Gemini, Cursor and other hosts (`AGENTS.md`, `GEMINI.md`,
+  `.cursor/rules/langsys.mdc`), and a test holds all of them to it.
 - **The migration guides collapse plurals into one flat phrase.** `_method.md`, `i18next.md`,
   `vue-i18n.md` and `react-intl.md` turned `_one`/`_other` keys, pipe forms and react-intl's
   ICU messages into hand-written ICU; they now give the flat sentence, with a zero form or a
   source-language variant (i18next's context suffixes, a react-intl `select`) as its own phrase.
+  react-intl's formatted arguments and its number and date components format in code with
+  `Intl` and pass the value as a param, and an ordinal is phrased so it needs no ending.
+- **The Laravel guide** says never to write ICU in a phrase, in place of its README's example.
+- **The base language "reads as written"** in `SKILL.md` and `choosing-sdks.md`, where it said
+  it "always looks right": until a phrase's plural check has run, English shows the flat
+  sentence.
 - **The core-0.6 interpolation guide**, which React and Vue projects read, starts its plural
   section with the same rule in place of a hand-written ICU example.
 - **`sdk-versions.md`** shows `langsys-js-typescript` 0.7.2 and `langsys-js-svelte` 4.0.3, which

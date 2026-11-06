@@ -1909,3 +1909,20 @@ installed this repo's payload into this repo.
 It is now an error naming the `--dir=` form, because this is the tool that writes files, and the
 quiet version of that mistake puts a payload somewhere nobody asked for. The strictness about
 unknown *options* was already there for the same reason; the positional case was the gap in it.
+
+## 0.3.2: plurals written flat (checked 2026-11-06)
+
+- **The base language gets its plural forms.** langsys main, `app/Services/BaseLocalePluralBackstop.php`
+  (scheduled `->hourly()` in `app/Console/Kernel.php`), plus each machine-translation run, checks
+  every placeholder phrase. Run live with langsys-ai's own promoter, the flat English source
+  `Ready to import {count} new events. They go live in your directory.` came back as a `one`/`other`
+  plural.
+- **The SDKs ask for those forms.** `X-Langsys-Capabilities: icu` is sent by `langsys-js-typescript`
+  0.6.5 (`src/api.ts:27`) and 0.7.x, and by `langsys/langsys-php` 2.0.x (`src/Http/HttpClient.php`).
+  1.3.1 sends no such header. Core 0.6.5's `t()` reads the catalog at every locale, the base locale
+  included (`src/translations.ts`).
+- **Without the header, the API flattens a plural** to the form CLDR gives a count of 5
+  (`app/Helpers/IcuMessageFormat.php`, `TYPICAL_COUNT`): `other` in English and French, `many`
+  in Russian and Polish, `few` in Arabic. A select falls to its `other` branch.
+- **Versions.** `langsys-js-typescript` 0.7.2 and `langsys-js-svelte` 4.0.3, each installed into an
+  empty project, resolve core 0.7.2. `langsys-js-react` 0.6.7 and `langsys-js-vue` 0.2.1 declare `^0.6.5`.

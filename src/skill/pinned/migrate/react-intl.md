@@ -26,7 +26,7 @@ formatMessage({ id: 'cart.items' }, { count })
 t('{count} items', 'Cart', { count })
 ```
 
-A `select` whose branches say different things in the source language (`{platform, select, ios {…} android {…}}`) becomes one phrase per branch, chosen in code, and so does an `=0` branch.
+A `select` whose branches say different things in the source language (`{platform, select, ios {…} android {…}}`) becomes one phrase per branch, chosen in code, and so does an `=0` branch. An argument formatted inside a message (`{d, date, short}`, `{n, number, ::currency/EUR}`) is formatted in code with `Intl` and passed as a plain param. An ordinal (`selectordinal`) has no flat form Langsys makes, so phrase the sentence so the number needs no ordinal ending (`Place {n}`).
 
 ## Syntax mapping
 
@@ -115,7 +115,7 @@ Beyond [verify.md](../core-0.6/verify.md):
 - [ ] No `formatMessage` or `<FormattedMessage>` remaining
 - [ ] `defineMessages` blocks deleted
 - [ ] Rich-text messages became `<Phrase>`, none became `<Translate>`
-- [ ] ICU plural and select messages rewritten as flat sentences; none carried across
+- [ ] ICU plural, select, selectordinal and formatted-argument messages rewritten as flat sentences; none carried across
 - [ ] Extraction build step removed
 - [ ] `react-intl` / `@formatjs/*` removed from `package.json`
 - [ ] Quarantine report reviewed and cleared
