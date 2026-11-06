@@ -13,18 +13,20 @@ grep -E '"(react-intl|@formatjs/[a-z-]+)"' package.json
 find . -name "*.json" -path "*lang*" -not -path "./node_modules/*"
 ```
 
-## The good news: ICU carries over
+## ICU messages become flat sentences
 
-react-intl already uses ICU MessageFormat, and so does Langsys. **Plural and select syntax migrates unchanged** — this is the easiest of the three migrations.
+react-intl messages are ICU MessageFormat. Langsys makes the plural and gender forms itself, the base language's included, so a plural message becomes the flat sentence it describes, with the count as a placeholder. Never carry ICU across.
 
 ```ts
 // react-intl
 formatMessage({ id: 'cart.items' }, { count })
 // with en.json: { "cart.items": "{count, plural, one {# item} other {# items}}" }
 
-// Langsys — same ICU string, now inline
-t('{count, plural, one {# item} other {# items}}', 'Cart', { count })
+// Langsys — the flat sentence
+t('{count} items', 'Cart', { count })
 ```
+
+A `select` whose branches say different things in the source language (`{platform, select, ios {…} android {…}}`) becomes one phrase per branch, chosen in code, and so does an `=0` branch.
 
 ## Syntax mapping
 
@@ -38,8 +40,8 @@ t('{count, plural, one {# item} other {# items}}', 'Cart', { count })
 | `defineMessages({ … })` | delete — phrases live at the call site |
 | `<IntlProvider locale messages>` | `LangsysGate` calling `LangsysApp.init()` |
 | `intl.locale` | `useCurrentLocale()` |
-| `<FormattedNumber value={n} />` | `t('{n, number}', 'Cat', { n })` — or keep `Intl.NumberFormat` directly |
-| `<FormattedDate value={d} />` | `t('{d, date}', 'Cat', { d })` — or keep `Intl.DateTimeFormat` |
+| `<FormattedNumber value={n} />` | keep `Intl.NumberFormat` directly; in a sentence, pass it as a param (`t('Total: {n}', 'Cat', { n })`), which formats it for the locale |
+| `<FormattedDate value={d} />` | keep `Intl.DateTimeFormat` directly; in a sentence, pass it as a param (`t('Sent on {d}', 'Cat', { d })`) |
 
 ## `defineMessages` is your resolution table
 
@@ -106,8 +108,6 @@ LangsysApp.init({
 
 **`intl.formatMessage` outside components.** Non-component call sites move to the imported `t` from `langsys-js-typescript`, or take `t` as an argument. Do not reach for a global.
 
-**Escaped braces.** ICU `'{'` literal-brace escaping carries over unchanged — Langsys uses the same ICU renderer.
-
 ## Verify
 
 Beyond [verify.md](../core-0.6/verify.md):
@@ -115,7 +115,7 @@ Beyond [verify.md](../core-0.6/verify.md):
 - [ ] No `formatMessage` or `<FormattedMessage>` remaining
 - [ ] `defineMessages` blocks deleted
 - [ ] Rich-text messages became `<Phrase>`, none became `<Translate>`
-- [ ] ICU plural/select strings preserved verbatim
+- [ ] ICU plural and select messages rewritten as flat sentences; none carried across
 - [ ] Extraction build step removed
 - [ ] `react-intl` / `@formatjs/*` removed from `package.json`
 - [ ] Quarantine report reviewed and cleared

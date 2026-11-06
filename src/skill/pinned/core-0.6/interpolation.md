@@ -83,15 +83,15 @@ Formatting uses the **catalog locale**, not the host's default, so server and cl
 
 ---
 
-## ICU MessageFormat
+## Plurals and gender: write the sentence flat
 
-Translations containing ICU syntax render with full CLDR plural rules for the active locale — Arabic's six categories, Russian's four:
+**Never write ICU.** Write the sentence flat, with the count as a placeholder, and Langsys makes each language's plural and gender forms, the base language included:
 
 ```ts
-t('{count, plural, one {# item} other {# items}}', 'Cart', { count });
+t('You have {count} new messages', 'Inbox', { count });
 ```
 
-Style-less ICU arguments (`{n, number}`, `{d, date}`, `{t, time}`) also format. Plain `{name}` slots keep working unchanged.
+The core asks the API for those forms on every request (`X-Langsys-Capabilities: icu`) and `t()` renders them with full CLDR plural rules for the active locale, Arabic's six categories and Russian's four. Until a phrase's base-language check has run, the base language shows the sentence as written. A sentence that says something different at zero is its own phrase, chosen in code.
 
 > This is the mechanism [choosing-primitives.md](./choosing-primitives.md) protects: a plural rule can only inflect a noun that is **in the same phrase** as the count. Splitting the sentence puts them in different catalog entries and makes the plural unexpressible.
 

@@ -3,7 +3,7 @@ name: langsys
 description: The Langsys entry skill. Read this first for any work on Langsys translation — adding translations, internationalization, i18n, l10n, localization or multi-language support — then the core skill of the SDK's language and the framework's own skill. Covers what Langsys is, choosing the SDKs, the project, API keys and secrets, whether a session may register content, categories, the MCP, the scan and doctor tools, and projects that render through two SDKs.
 metadata:
   package: langsys-skill
-  version: 0.3.1
+  version: 0.3.2
 ---
 
 # Langsys
@@ -81,7 +81,26 @@ the content you wanted translated; `${name}` registers one per visitor. Content 
 database, a PIM feed or a partner API needs no special handling — the app is where content
 converges, and that is where translation happens.
 
-**2. The source text is the key.** No `locales/en.json`, no `messages/`, no dot-keys.
+**2. Never write a plural or a gender form: Langsys makes them.** Write the sentence flat,
+with the count or the name as a `{placeholder}`. Langsys makes each language's plural and
+gender forms from it and the SDK renders the one the count selects. That includes your base
+language: Langsys runs the same plural check on the base-language text, so English renders
+`You have 1 new message` with no ICU in English either. Until a phrase's check has run, the
+base language shows the sentence as written. A sentence that says something different at zero
+is its own phrase, chosen in code.
+
+```
+t('You have {count} new messages', 'Inbox', { count })                                    ✅
+translate('You have {count} new messages', null, 'Inbox', null, ['count' => $count])      ✅
+t('{count, plural, one {# new message} other {# new messages}}', 'Inbox', { count })       ❌ ICU by hand
+```
+
+The skills in `langsys-js-typescript` 0.7.1, `langsys-js-svelte` 4.0.2 and `langsys/langsys-php`
+2.0.1 show plurals written by hand in ICU; follow this rule there too. On `langsys/langsys-php`
+1.x, which Laravel apps run, the API sends each plural as its `other` form in every language;
+write the sentence flat all the same.
+
+**3. The source text is the key.** No `locales/en.json`, no `messages/`, no dot-keys.
 `t('home.welcome')` registers the literal string `home.welcome`. If a project being migrated
 has catalog files, they are *inputs* to the migration, not something to recreate.
 
@@ -90,10 +109,10 @@ has catalog files, they are *inputs* to the migration, not something to recreate
 > sentence is the phrase. The key never reaches Langsys —
 > [pinned/laravel.md](./pinned/laravel.md).
 
-**3. Phrase first, category second.** `t(phrase, category?, params?)`. With a
+**4. Phrase first, category second.** `t(phrase, category?, params?)`. With a
 placeholder-free phrase **both orders typecheck**, so the compiler will not catch a swap.
 
-**4. Pick the primitive by asking where the phrase boundaries are** — not by how much text
+**5. Pick the primitive by asking where the phrase boundaries are** — not by how much text
 there is. The question is whether a tag boundary belongs to the **language** or to the
 **layout**.
 
@@ -108,17 +127,17 @@ translator can work with and no language can reorder — and a count separated f
 inflects makes the plural **unexpressible** in Russian, Arabic and Polish. It still renders,
 in word-salad, in every locale but yours.
 
-**5. The server decides whether a session may register**, not the key's type. An answer
+**6. The server decides whether a session may register**, not the key's type. An answer
 without that decision is read-only, even for a write key; an `ip_write` key writes only from
 an allow-listed address; an app behind a login needs per-user write grants. A read-only
 session reports a page's URL so Langsys can record where untranslated content is — **recording
 is not registering**, and nothing on that list reaches the catalog until a write-enabled
 session renders the page. [projects-and-keys.md](./projects-and-keys.md)
 
-**6. Write key in development, read-only or `ip_write` in production.** And match the
+**7. Write key in development, read-only or `ip_write` in production.** And match the
 environment-variable prefix to the bundler — the single most common silent misconfiguration.
 
-**7. Categorize only when the same words legitimately mean different things.** `Home` the nav
+**8. Categorize only when the same words legitimately mean different things.** `Home` the nav
 item and `Home` the noun want different translations; most phrases want none.
 [categories.md](./categories.md)
 

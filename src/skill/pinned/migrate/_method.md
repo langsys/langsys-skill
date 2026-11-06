@@ -135,13 +135,17 @@ Positional placeholders (`{0}`, `%s`) must become **named** ones. Translators ne
 
 ### Plurals
 
+Collapse each plural's variants into one flat phrase, with the count as a placeholder. Langsys makes every language's plural forms from it, the base language included, so never write ICU.
+
 ```ts
 // i18next — separate _one / _other keys
 "item_one": "{{count}} item", "item_other": "{{count}} items"
 
-// Langsys — one ICU phrase
-t('{count, plural, one {# item} other {# items}}', 'Cart', { count })
+// Langsys — one flat phrase
+t('{count} items', 'Cart', { count })
 ```
+
+A variant that says something different, such as a zero form reading "No items", becomes its own phrase, chosen in code.
 
 ### Never pre-format
 

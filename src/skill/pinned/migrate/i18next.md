@@ -25,7 +25,7 @@ Catalogs typically live in `public/locales/{lng}/{ns}.json` or `src/locales/`.
 | `t('greeting', { name })` | `t('Hello, {name}!', 'Greetings', { name })` |
 | `{{name}}` | `{name}` |
 | `t('key', { defaultValue: 'Text' })` | `t('Text', 'Category')` — the default **is** the phrase |
-| `t('item', { count })` + `_one`/`_other` keys | `t('{count, plural, one {# item} other {# items}}', 'Cart', { count })` |
+| `t('item', { count })` + `_one`/`_other` keys | `t('{count} items', 'Cart', { count })` |
 | `<Trans i18nKey="x">…</Trans>` | **`<Phrase>`** — never `<Translate>` |
 | `i18n.changeLanguage('es')` | `setLocale('es-ES')` from `useLocaleStore()` |
 | `i18n.language` | `useCurrentLocale()` |
@@ -46,17 +46,17 @@ Mapping namespaces 1:1 gives three catalog entries needing three separate transl
 
 ## Plurals
 
-i18next uses key suffixes; Langsys uses ICU inside one phrase.
+i18next uses key suffixes; Langsys makes the forms from one flat phrase. Never write ICU.
 
 ```json
 { "item_one": "{{count}} item", "item_other": "{{count}} items" }
 ```
 
 ```ts
-t('{count, plural, one {# item} other {# items}}', 'Cart', { count })
+t('{count} items', 'Cart', { count })
 ```
 
-Languages with more categories (Russian 4, Arabic 6) are handled by the ICU renderer per locale — you do not enumerate them in source. If the old catalog had `_few` / `_many` variants for a target language, that information lives in the **translation**, not the source phrase.
+Langsys makes each language's forms per locale, Russian's four and Arabic's six, and the base language's too, so you never enumerate them in source. If the old catalog had `_few` / `_many` variants for a target language, that information lives in the **translation**, not the source phrase. A `_zero` variant that says something different is its own phrase, chosen in code.
 
 ## `<Trans>` → `<Phrase>`
 
@@ -103,10 +103,10 @@ LangsysApp.init({
 
 **`returnObjects: true`.** Arrays/objects returned from the catalog have no Langsys equivalent — each item becomes its own phrase, or the structure moves into code. Quarantine.
 
-**Context suffixes** (`friend_male`, `friend_female`) map to ICU `select`:
+**Context suffixes** (`friend_male`, `friend_female`) are different sentences in the source language, so each is its own phrase, chosen in code:
 
 ```ts
-t('{gender, select, male {His friend} female {Her friend} other {Their friend}}', 'Social', { gender })
+gender === 'female' ? t('Her friend', 'Social') : gender === 'male' ? t('His friend', 'Social') : t('Their friend', 'Social')
 ```
 
 **Nesting** (`$t(common:appName)` inside another string) has no equivalent — inline the value, or use a `{param}`.
@@ -118,6 +118,6 @@ Beyond [verify.md](../core-0.6/verify.md):
 - [ ] No `t('dot.key')` survivors — `langsys-no-dot-key-phrase` catches these
 - [ ] Every `<Trans>` became `<Phrase>`, none became `<Translate>`
 - [ ] No `{{name}}` left in any phrase
-- [ ] Plural keys collapsed into ICU phrases; `_one`/`_other` keys gone
+- [ ] Plural keys collapsed into one flat phrase each; `_one`/`_other` keys gone; no ICU written by hand
 - [ ] `i18next` and `react-i18next` removed from `package.json`
 - [ ] Quarantine report reviewed and cleared

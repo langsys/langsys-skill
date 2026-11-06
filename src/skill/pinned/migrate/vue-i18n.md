@@ -24,7 +24,7 @@ grep -rl "<i18n" --include="*.vue" src/     # SFC-local message blocks
 | `{name}` named | `{name}` (unchanged) |
 | `{0}` positional | **must become named** — `{name}` |
 | `@:common.appName` linked messages | inline the text, or pass a `{param}` |
-| `$tc('item', count)` | `t('{count, plural, one {# item} other {# items}}', 'Cart', { count })` |
+| `$tc('item', count)` | `t('{count} items', 'Cart', { count })` |
 | `locale.value = 'es'` | `setLocale('es-ES')` from `useLocaleStore()` |
 | `createI18n({ … })` | `LangsysApp.init({ … })` |
 | `<i18n>` SFC blocks | delete — messages move to call sites |
@@ -61,17 +61,17 @@ Positional arguments must be **named**. Translators need the name to know what t
 
 ## Pluralization
 
-vue-i18n uses pipe-separated variants; Langsys uses ICU.
+vue-i18n uses pipe-separated variants; Langsys makes the forms from one flat phrase. Never write ICU.
 
 ```json
 { "car": "no cars | one car | {count} cars" }
 ```
 
 ```ts
-t('{count, plural, =0 {no cars} one {one car} other {# cars}}', 'Vehicles', { count })
+count === 0 ? t('No cars', 'Vehicles') : t('{count} cars', 'Vehicles', { count })
 ```
 
-vue-i18n's pipe form is **position-based** and cannot express Russian's four or Arabic's six categories correctly. ICU can, per locale, without enumerating them in source. This is usually an upgrade, not just a port.
+The flat phrase gives every language its singular and plural forms, the base language included. The zero variant says something different, so it is its own phrase. vue-i18n's pipe form is **position-based** and cannot express Russian's four or Arabic's six categories; Langsys makes them per locale without them appearing in source. This is usually an upgrade, not just a port.
 
 ## SFC `<i18n>` blocks
 
@@ -143,7 +143,7 @@ Beyond [verify.md](../core-0.6/verify.md):
 
 - [ ] `t.value(...)` in script, `t(...)` in templates — check every migrated `setup()`
 - [ ] No positional `{0}` placeholders left
-- [ ] Pipe-form plurals converted to ICU
+- [ ] Pipe-form plurals collapsed into flat phrases; a different zero sentence is its own phrase; no ICU written by hand
 - [ ] `<i18n>` SFC blocks removed; their non-base translations noted
 - [ ] Linked messages (`@:`) resolved
 - [ ] `vue-i18n` removed from `package.json`

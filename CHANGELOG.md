@@ -11,6 +11,30 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## 0.3.2 - 2026-11-06
+
+Developers never write ICU. Langsys makes each language's plural and gender forms from a flat
+phrase, the base language included, and the SDKs render them. The entry skill now says so as a
+rule every SDK shares, and the pinned guides stop teaching plurals written by hand.
+
+### Fixed
+
+- **A new rule 2: never write a plural or a gender form.** Write the sentence flat with its
+  `{placeholders}`; Langsys runs the same plural check on the base-language text, so English
+  renders `You have 1 new message` with no ICU in English either, once the phrase has been
+  checked. A sentence that says something different at zero is its own phrase. The rule also
+  says that the skills in `langsys-js-typescript` 0.7.1, `langsys-js-svelte` 4.0.2 and
+  `langsys/langsys-php` 2.0.1 show ICU written by hand, and that on `langsys/langsys-php` 1.x,
+  which Laravel apps run, each plural arrives as its `other` form. The later rules are 3 to 8.
+- **The migration guides collapse plurals into one flat phrase.** `_method.md`, `i18next.md`,
+  `vue-i18n.md` and `react-intl.md` turned `_one`/`_other` keys, pipe forms and react-intl's
+  ICU messages into hand-written ICU; they now give the flat sentence, with a zero form or a
+  source-language variant (i18next's context suffixes, a react-intl `select`) as its own phrase.
+- **The core-0.6 interpolation guide**, which React and Vue projects read, starts its plural
+  section with the same rule in place of a hand-written ICU example.
+- **`sdk-versions.md`** shows `langsys-js-typescript` 0.7.2 and `langsys-js-svelte` 4.0.3, which
+  resolve core 0.7.2, measured by installing each into an empty project.
+
 ## 0.3.1 - 2026-10-31
 
 `langsys/langsys-php` 2.0.1 and `langsys-js-svelte` 4.0.2 ship their own skills, so the entry

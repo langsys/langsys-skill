@@ -18,8 +18,8 @@ Measured by installing each published binding into an empty project and reading 
 
 | You install | Published | Declares | **Resolves core** |
 |---|---|---|---|
-| `langsys-js-typescript` | 0.7.1 | — | **0.7.1** |
-| `langsys-js-svelte` | 4.0.2 | `^0.7.1` | **0.7.1** |
+| `langsys-js-typescript` | 0.7.2 | — | **0.7.2** |
+| `langsys-js-svelte` | 4.0.3 | `^0.7.2` | **0.7.2** |
 | `langsys-js-react` | 0.6.7 | `^0.6.5` | **0.6.5** |
 | `langsys-js-vue` | 0.2.1 | `^0.6.5` | **0.6.5** |
 | `langsys-js-svelte` 3.x | 3.6.17 | `^0.6.4` | **0.6.5** |
@@ -29,7 +29,7 @@ Measured by installing each published binding into an empty project and reading 
 move it. Only a new release of the binding can.
 
 **Do not read a binding's own version as a core version.** `langsys-js-react@0.6.7` and
-`langsys-js-svelte@4.0.2` tell you nothing about the core underneath. Only the resolved
+`langsys-js-svelte@4.0.3` tell you nothing about the core underneath. Only the resolved
 dependency does:
 
 ```bash
