@@ -76,18 +76,17 @@ charged again:
 ```ts
 t('Buy now', inCategory('Checkout', { previousCategory: 'Header' }))                // langsys-js-typescript ≥ 0.7.3
 ```
+```svelte
+{$t('Buy now', inCategory('Checkout', { previousCategory: 'Header' }))}    <!-- langsys-js-svelte ≥ 4.1.0 -->
+<Translate category="Pricing" previousCategory="Home">…</Translate>
+```
 ```php
 $client->translate('Buy now', null, ['category' => 'Checkout', 'previous_category' => 'Header']); // langsys/langsys-php ≥ 2.1.0
 ```
 
-`''` as the previous category means it had none. In core 0.7.3 and `langsys-php` 2.1.0, blocks
-and phrases take the same option. The core skill of each SDK has the rest of the forms.
-
-**Svelte** (`langsys-js-svelte` 4.0.3) passes the core's `t` straight through, so
-`$t(phrase, inCategory(…))` works once `npm ls langsys-js-typescript` shows 0.7.3 or later. A fresh
-install resolves 0.7.3, but an older lockfile can hold 0.7.2, which has no option. Import
-`inCategory` from `langsys-js-typescript`, because Svelte does not re-export it. Its `<Translate>`
-and `<Phrase>` components take no previous category, so move those through the API (below).
+`''` as the previous category means it had none. Blocks and phrases take the same option: in
+Svelte, `<Translate>` and `<Phrase>` take a `previousCategory` prop, and `inCategory` is exported
+from `langsys-js-svelte`. Each SDK's own skill has the rest of the forms.
 
 - **Move every use of the text in that category in the same release.** One item stands for every
   call registering that text in that category, so the move retires it for all of them. A call
@@ -108,8 +107,8 @@ and `<Phrase>` components take no previous category, so move those through the A
 ### When the SDK cannot say it
 
 `langsys-js-react` 0.6.x and `langsys-js-vue` 0.2.x run on core 0.6, and `langsys-php-laravel`
-1.0.0 runs on `langsys-php` 1.3.x, so none of them has the option. Neither do Svelte's components,
-or a move ahead of any code change. Use the API instead: `POST /api/translatable-items/recategorize`,
+1.0.0 runs on `langsys-php` 1.3.x, so none of them has the option. Neither does
+`langsys-js-svelte` before 4.1.0, or a move ahead of any code change. Use the API instead: `POST /api/translatable-items/recategorize`,
 or the MCP tool *move translatable items into another category*. It takes the target `category`
 plus either item ids (`translatable_item_ids`) or, for standalone phrases only,
 `{project_id, phrases: [{phrase, category}]}`. **Name content blocks by item id.** It answers
