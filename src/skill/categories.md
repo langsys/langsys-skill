@@ -108,8 +108,8 @@ from `langsys-js-svelte`. Each SDK's own skill has the rest of the forms.
 
 `langsys-js-react` 0.6.x and `langsys-js-vue` 0.2.x run on core 0.6, and `langsys-php-laravel`
 1.0.0 runs on `langsys-php` 1.3.x, so none of them has the option. Neither does
-`langsys-js-svelte` before 4.1.0, or a move ahead of any code change. Use the API instead: `POST /api/translatable-items/recategorize`,
-or the MCP tool *move translatable items into another category*. It takes the target `category`
+`langsys-js-svelte` before 4.1.0, or a move ahead of any code change. Use the API instead:
+`POST /api/translatable-items/recategorize`, or the MCP tool *move translatable items into another category*. It takes the target `category`
 plus either item ids (`translatable_item_ids`) or, for standalone phrases only,
 `{project_id, phrases: [{phrase, category}]}`. **Name content blocks by item id.** It answers
 `409` while any of the items is being machine translated, so try again when that finishes.
