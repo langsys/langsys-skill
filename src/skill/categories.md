@@ -80,14 +80,24 @@ t('Buy now', inCategory('Checkout', { previousCategory: 'Header' }))            
 $client->translate('Buy now', null, ['category' => 'Checkout', 'previous_category' => 'Header']); // langsys/langsys-php ≥ 2.1.0
 ```
 
-`''` as the previous category means it had none. Blocks and phrases take the same option. The
-core skill of each SDK has the rest of the forms.
+`''` as the previous category means it had none. In core 0.7.3 and `langsys-php` 2.1.0, blocks
+and phrases take the same option. The core skill of each SDK has the rest of the forms.
+
+**Svelte** (`langsys-js-svelte` 4.0.3) passes the core's `t` straight through, so
+`$t(phrase, inCategory(…))` works once `npm ls langsys-js-typescript` shows 0.7.3 or later. A fresh
+install resolves 0.7.3, but an older lockfile can hold 0.7.2, which has no option. Import
+`inCategory` from `langsys-js-typescript`, because Svelte does not re-export it. Its `<Translate>`
+and `<Phrase>` components take no previous category, so move those through the API (below).
 
 - **Move every use of the text in that category in the same release.** One item stands for every
   call registering that text in that category, so the move retires it for all of them. A call
   left behind is still served, but drops out of the Translation Manager and its stats.
-- **The option acts once,** the first time the new code registers the item. It is never part of
-  an id or a key, so it can be deleted whenever convenient afterwards. There is no deadline.
+- **Until the catalog has the item under the new category, the old category's translation
+  renders,** so the first deploy shows no source text.
+- **The option acts once,** when the new code registers the item. It is never part of an id or a
+  key. Delete it **once the new category's translation is in the catalog**, not before: it also
+  drives the fallback above, so removing it early renders source text in the meantime. After
+  that there is no deadline.
 - **Old app versions keep working.** A release still registering the old category is served it.
   The retired item is removed after 90 days.
 - **Moving back is a move too.** Name the category the content is in now. A plain revert does
@@ -96,14 +106,22 @@ core skill of each SDK has the rest of the forms.
 ### When the SDK cannot say it
 
 `langsys-js-react` 0.6.x and `langsys-js-vue` 0.2.x run on core 0.6, and `langsys-php-laravel`
-1.0.0 runs on `langsys-php` 1.3.x, so none of them has the option. Neither does a move ahead of
-any code change. Use the API instead: `POST /api/translatable-items/recategorize`, or the MCP
-tool *move translatable items into another category*. It takes item ids, or
-`{project_id, phrases: [{phrase, category}]}`, plus the target `category`, and moves blocks as
-well as phrases.
+1.0.0 runs on `langsys-php` 1.3.x, so none of them has the option. Neither do Svelte's components,
+or a move ahead of any code change. Use the API instead: `POST /api/translatable-items/recategorize`,
+or the MCP tool *move translatable items into another category*. It takes the target `category`
+plus either item ids (`translatable_item_ids`) or, for standalone phrases only,
+`{project_id, phrases: [{phrase, category}]}`. **Name content blocks by item id.** It answers
+`409` while any of the items is being machine translated, so try again when that finishes.
 
 **Deploy the code that uses the new category first, then move.** Moving first leaves the live
 code registering a retired item until the deploy lands.
+
+**The endpoint is not a full substitute for the option.** Without the option, any write-enabled
+run of the new code registers the new-category items as new content, and that includes your own
+local run with a write key. Whatever it registers has been machine translated and charged by the
+time you move. The move then lands on that item and brings the old translations over, keeping a
+person's translation already there. So move **as soon as the new code runs anywhere
+write-enabled**, or run it read-only until you have moved.
 
 ### Checking that a move worked
 

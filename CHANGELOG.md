@@ -22,6 +22,14 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
   90-day retirement and that a revert is a move. For SDKs without the option (React 0.6.x, Vue
   0.2.x, Laravel 1.0.0) it points to `POST /api/translatable-items/recategorize` and its MCP
   tool, with deploy first and move second. Rules are from SDK spec 8.7.0, MOVE-1 to MOVE-5.
+  - Svelte 4.0.3: `$t` takes `inCategory()` once core resolves 0.7.3. Its components cannot say
+    it, so they go through the endpoint.
+  - The endpoint only fully avoids a charge for items the new code has not registered yet, so
+    move as soon as it runs anywhere write-enabled. Content blocks are named by item id.
+  - The option is deleted once the new category's translation is in the catalog, not merely
+    after registration, because it also drives the old-category fallback.
+- `sdk-versions.md`: a fresh install of `langsys-js-typescript`, and of `langsys-js-svelte` 4.0.3,
+  now resolves core **0.7.3**, measured in empty projects.
 
 ## 0.3.2 - 2026-11-06
 

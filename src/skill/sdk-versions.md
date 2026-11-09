@@ -18,8 +18,8 @@ Measured by installing each published binding into an empty project and reading 
 
 | You install | Published | Declares | **Resolves core** |
 |---|---|---|---|
-| `langsys-js-typescript` | 0.7.2 | — | **0.7.2** |
-| `langsys-js-svelte` | 4.0.3 | `^0.7.2` | **0.7.2** |
+| `langsys-js-typescript` | 0.7.3 | — | **0.7.3** |
+| `langsys-js-svelte` | 4.0.3 | `^0.7.2` | **0.7.3** |
 | `langsys-js-react` | 0.6.7 | `^0.6.5` | **0.6.5** |
 | `langsys-js-vue` | 0.2.1 | `^0.6.5` | **0.6.5** |
 | `langsys-js-svelte` 3.x | 3.6.17 | `^0.6.4` | **0.6.5** |
