@@ -99,7 +99,9 @@ and `<Phrase>` components take no previous category, so move those through the A
   drives the fallback above, so removing it early renders source text in the meantime. After
   that there is no deadline.
 - **Old app versions keep working.** A release still registering the old category is served it.
-  The retired item is removed after 90 days.
+  After 90 days the retired item leaves the catalog, until an old release registers it again.
+  That restores it with its translations, at no charge. That release shows source text for the
+  item only until its registration lands and the catalog is fetched again.
 - **Moving back is a move too.** Name the category the content is in now. A plain revert does
   not bring the old item back. It registers new content.
 

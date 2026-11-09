@@ -28,6 +28,9 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
     move as soon as it runs anywhere write-enabled. Content blocks are named by item id.
   - The option is deleted once the new category's translation is in the catalog, not merely
     after registration, because it also drives the old-category fallback.
+  - Past the 90-day purge, an old release re-registering the old category restores it with its
+    translations and no charge, after one miss. This is per the API team, whose feature tests
+    cover it.
 - `sdk-versions.md`: a fresh install of `langsys-js-typescript`, and of `langsys-js-svelte` 4.0.3,
   now resolves core **0.7.3**, measured in empty projects.
 
