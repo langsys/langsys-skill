@@ -11,6 +11,18 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## Unreleased
+
+- `categories.md`: a new section, **Moving content to another category**. Until now an agent
+  told to recategorize would edit the category in place, which registers the content as new and
+  machine translates and charges it again. It now names the previous category in the same
+  change: `inCategory(…, { previousCategory })` in `langsys-js-typescript` ≥ 0.7.3, and
+  `'previous_category'` in `langsys/langsys-php` ≥ 2.1.0, both checked in the published
+  artifacts. It also covers moving every use in one release, that the option acts once, the
+  90-day retirement and that a revert is a move. For SDKs without the option (React 0.6.x, Vue
+  0.2.x, Laravel 1.0.0) it points to `POST /api/translatable-items/recategorize` and its MCP
+  tool, with deploy first and move second. Rules are from SDK spec 8.7.0, MOVE-1 to MOVE-5.
+
 ## 0.3.2 - 2026-11-06
 
 Developers never write ICU. Langsys makes each language's plural and gender forms from a flat
