@@ -15,8 +15,9 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 
 - `categories.md`: a whole renamed category moves with one setting in `langsys/langsys-php`
   ≥ 2.2.1, the Client option `previous_categories` (`messages_previous_category` for the
-  messages category), checked in the v2.2.1 archive (9585bc5, which Packagist serves). 2.2.1 rather
-  than 2.2.0 because 2.2.1 makes a keyless dry run of the sync plan the messages-category move too.
+  messages category), checked in the v2.2.1 archive (9585bc5, which Packagist serves). It names
+  2.2.1 rather than 2.2.0 because 2.2.1 is the version whose keyless dry run (`Planner::offline()`)
+  also plans the messages-category move.
   Laravel stays out, since it is still on `langsys-php` 1.3.x.
 - `sdk-versions.md`: the PHP routing row names Packagist's latest, 2.2.1.
 
