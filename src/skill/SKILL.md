@@ -3,7 +3,7 @@ name: langsys
 description: The Langsys entry skill. Read this first for any work on Langsys translation — adding translations, internationalization, i18n, l10n, localization or multi-language support — then the core skill of the SDK's language and the framework's own skill. Covers what Langsys is, choosing the SDKs, the project, API keys and secrets, whether a session may register content, categories, the MCP, the scan and doctor tools, and projects that render through two SDKs.
 metadata:
   package: langsys-skill
-  version: 0.3.2
+  version: 0.3.3
 ---
 
 # Langsys

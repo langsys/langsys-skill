@@ -11,7 +11,7 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
-## Unreleased
+## 0.3.3 - 2026-11-09
 
 - `categories.md`: a new section, **Moving content to another category**. Until now an agent
   told to recategorize would edit the category in place, which registers the content as new and
