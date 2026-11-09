@@ -11,6 +11,15 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## Unreleased
+
+- `categories.md`: a whole renamed category moves with one setting in `langsys/langsys-php`
+  ≥ 2.2.1, the Client option `previous_categories` (`messages_previous_category` for the
+  messages category), checked in the v2.2.1 archive (9585bc5, which Packagist serves). 2.2.1 rather
+  than 2.2.0 because 2.2.1 makes a keyless dry run of the sync plan the messages-category move too.
+  Laravel stays out, since it is still on `langsys-php` 1.3.x.
+- `sdk-versions.md`: the PHP routing row names Packagist's latest, 2.2.1.
+
 ## 0.3.3 - 2026-11-09
 
 - `categories.md`: a new section, **Moving content to another category**. Until now an agent

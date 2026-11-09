@@ -84,6 +84,13 @@ t('Buy now', inCategory('Checkout', { previousCategory: 'Header' }))            
 $client->translate('Buy now', null, ['category' => 'Checkout', 'previous_category' => 'Header']); // langsys/langsys-php ≥ 2.1.0
 ```
 
+**A whole renamed category** is one setting in `langsys/langsys-php` ≥ 2.2.1: the Client option
+`'previous_categories' => ['Checkout' => 'Header']` moves every phrase rendered or synced under
+`Checkout` from `Header`, including lines only a language file reaches, unless a call names its
+own move. A renamed messages category takes `messages_previous_category`. Pages and blocks still
+name their moves per call. The `langsys-php` skill has the sync side (`planSync()` and its move
+conflicts).
+
 `''` as the previous category means it had none. Blocks and phrases take the same option: in
 Svelte, `<Translate>` and `<Phrase>` take a `previousCategory` prop, and `inCategory` is exported
 from `langsys-js-svelte`. Each SDK's own skill has the rest of the forms.
@@ -109,7 +116,8 @@ from `langsys-js-svelte`. Each SDK's own skill has the rest of the forms.
 `langsys-js-react` 0.6.x and `langsys-js-vue` 0.2.x run on core 0.6, and `langsys-php-laravel`
 1.0.0 runs on `langsys-php` 1.3.x, so none of them has the option. Neither does
 `langsys-js-svelte` before 4.1.0, or a move ahead of any code change. Use the API instead:
-`POST /api/translatable-items/recategorize`, or the MCP tool *move translatable items into another category*. It takes the target `category`
+`POST /api/translatable-items/recategorize`, or the MCP tool *move translatable items into
+another category*. It takes the target `category`
 plus either item ids (`translatable_item_ids`) or, for standalone phrases only,
 `{project_id, phrases: [{phrase, category}]}`. **Name content blocks by item id.** It answers
 `409` while any of the items is being machine translated, so try again when that finishes.

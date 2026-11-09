@@ -73,7 +73,7 @@ exists. Those apps are served by this package's pinned guides instead:
 | React (any meta-framework) | [pinned/react.md](./pinned/react.md) |
 | Vue / Nuxt | [pinned/vue.md](./pinned/vue.md) |
 | Svelte, or plain TypeScript | `langsys-typescript`, then `langsys-svelte` if present |
-| PHP, any framework but Laravel | `langsys-php` |
+| PHP, any framework but Laravel | `langsys-php` (Packagist latest **2.2.1**, 2026-11-09) |
 | Laravel | [pinned/laravel.md](./pinned/laravel.md) — **not** `langsys-php` |
 
 **A Laravel app is the same trap one language over.** `langsys-php-laravel@1.0.0` constrains
