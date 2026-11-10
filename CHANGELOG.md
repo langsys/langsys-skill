@@ -20,11 +20,14 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
   the gendered form. **No SDK formats a time of day.** A `Date` renders `dateStyle: medium` in
   core 0.6.5 and 0.7.3, and `IntlDateFormatter::MEDIUM`/`NONE` in langsys-php 2.2.1, so a time is
   passed as a string the app formatted in the user's locale and time zone.
-  `pinned/core-0.6/interpolation.md` carries both, plus two core 0.6.5 defects in a sentence
-  Langsys has made plural. There a `Date` comes back as an array holding the raw `Date`, and a
-  number other than the count renders unformatted. It also says that plurals follow the loaded
-  catalog's locale. `pinned/core-0.6/troubleshooting.md` no longer says the gender param cannot
-  be supplied. Reported by the React tab, and checked by running the published packages.
+  Rule 2 also says to pass dates and every number but the count as formatted strings. Inside a
+  sentence Langsys gave plural or gender forms, which a call cannot know about, a non-count
+  number renders unformatted in core 0.6.5, core 0.7.3 and langsys-php 2.2.1 alike. On core
+  0.6.5 a `Date` comes back as an array, which crashes a React render.
+  `pinned/core-0.6/interpolation.md` carries all of it, including a fallback for the catalog
+  locale, which starts empty. It also says that plurals follow the loaded catalog's locale.
+  `pinned/core-0.6/troubleshooting.md` no longer says the gender param cannot be supplied.
+  Reported by the React tab, and checked by running the published packages.
 - `categories.md`: a whole renamed category moves with one setting in `langsys/langsys-php`
   ≥ 2.2.1, the Client option `previous_categories` (`messages_previous_category` for the
   messages category), checked in the v2.2.1 archive (9585bc5, which Packagist serves). It names

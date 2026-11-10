@@ -112,18 +112,27 @@ The rule leaves two gaps, and each has its own answer:
   0.6.x, `langsys-js-vue` 0.2.x and `langsys-js-svelte` 3.x run on, types `t()`'s params from
   the phrase as written, so an object literal carrying `name_gender` is a type error. Its runtime
   uses the param all the same. Pass it in a `<Phrase>` or `<Translate>` `params` prop, or in a
-  params object built before the call, and the gendered form renders. Core 0.6's debug warning
-  that the key matches no placeholder is wrong for `name_gender`. Without the param a gendered
+  params object built before the call, and the gendered form renders. When a component's debug
+  warning says `name_gender` matches no placeholder and suggests `%name_gender%`, ignore it:
+  writing that would print the gender into the sentence. Without the param a gendered
   translation renders its neutral `other` form, which is a correct sentence but not a gendered
   one. `langsys/langsys-php` 1.x never asks for these forms, so it always renders neutral.
-- **No SDK formats a time of day.** A `Date` in `{placeholder}` renders as a date only, in the
-  medium style (`Mar 14, 2026`). On core 0.6 a `Date` in a sentence Langsys has made plural
-  does not render as text at all. Pass a string the app formatted itself, in the locale the page
-  renders in and the user's time zone: always for a time, and on core 0.6 for any date in a
-  sentence with a count. In JavaScript that is
-  `new Intl.DateTimeFormat(locale, { timeStyle: 'short', timeZone }).format(d)`, and in PHP
+- **Format dates, times and every number but the count yourself, and pass them as strings.**
+  The server decides per language which sentences get plural or gender forms, so a call cannot
+  know whether its sentence has them, and inside such a sentence two things go wrong:
+  - **Numbers** other than the count render unformatted (`1234.5`, not `1.234,5`) in every SDK.
+  - **Dates** on core 0.6 do not render as text. `t()` returns an array holding the raw `Date`.
+    React throws *Objects are not valid as a React child*, and Vue prints the array.
+    `<Phrase>`/`<Translate>` print the `Date`'s `toString()` in the host's time zone.
+
+  No SDK formats a time of day either. A `Date` renders as a date only, in the medium style
+  (`Mar 14, 2026`). So format these values in the locale the page renders in and the user's
+  time zone. In JavaScript that is
+  `new Intl.DateTimeFormat(locale, { timeStyle: 'short', timeZone }).format(d)` or
+  `new Intl.NumberFormat(locale).format(n)`. In PHP it is
   `(new IntlDateFormatter($locale, IntlDateFormatter::NONE, IntlDateFormatter::SHORT, $tz))->format($d)`.
-  Do not write `{d, time}`.
+  The count stays a number, since it is what selects the plural. Do not write `{d, time}` or
+  `{n, number}`.
 
 **3. The source text is the key.** No `locales/en.json`, no `messages/`, no dot-keys.
 `t('home.welcome')` registers the literal string `home.welcome`. If a project being migrated
