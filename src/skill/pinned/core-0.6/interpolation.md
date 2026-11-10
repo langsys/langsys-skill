@@ -73,8 +73,8 @@ To keep a literal `%WORD%` (e.g. a Windows env var like `%PATH%` in documentatio
 
 Allowed types: `string | number | Date | boolean`.
 
-- **Numbers** → `Intl.NumberFormat` for the active locale (`1234.5` → `1.234,5` in `de-DE`)
-- **Dates** → `Intl.DateTimeFormat`, medium style (`Mar 14, 2026` / `14.03.2026`)
+- **Numbers** → `Intl.NumberFormat` for the catalog locale (`1234.5` → `1.234,5` in `de-DE`)
+- **Dates** → `Intl.DateTimeFormat`, medium style (`Mar 14, 2026` / `14.03.2026`), **date only**. No form shows a time of day, and `{d, time}` is ICU written by hand. For a time, pass a string you formatted yourself, e.g. `new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(d)`
 - **Strings** → passed through untouched
 
 Formatting uses the **catalog locale**, not the host's default, so server and client render identically. To opt out — IDs, codes, anything that must not get grouping separators — pass the value as a string.
@@ -85,15 +85,17 @@ Formatting uses the **catalog locale**, not the host's default, so server and cl
 
 ## Plurals and gender: write the sentence flat
 
-**Never write ICU.** Write the sentence flat, with the count as a placeholder, and Langsys makes each language's plural and gender forms, the base language included:
+**Never write ICU.** Write the sentence flat, with the count as a placeholder, and Langsys makes each language's plural forms, the base language included:
 
 ```ts
 t('You have {count} new messages', 'Inbox', { count });
 ```
 
-The core asks the API for those forms on every request (`X-Langsys-Capabilities: icu`) and `t()` renders them with full CLDR plural rules for the active locale, Arabic's six categories and Russian's four. Until a phrase's base-language check has run, the base language shows the sentence as written. A sentence that says something different at zero is its own phrase, chosen in code.
+The core asks the API for those forms on every request (`X-Langsys-Capabilities: icu`) and `t()` renders them with full CLDR plural rules for the loaded catalog's locale, Arabic's six categories and Russian's four. That locale lags a locale change until the new catalog arrives. Until a phrase's base-language check has run, the base language shows the sentence as written. A sentence that says something different at zero is its own phrase, chosen in code.
 
 > This is the mechanism [choosing-primitives.md](./choosing-primitives.md) protects: a plural rule can only inflect a noun that is **in the same phrase** as the count. Splitting the sentence puts them in different catalog entries and makes the plural unexpressible.
+
+**Gender renders neutral on core 0.6.** In a language with grammatical gender, Langsys can turn `{name}` into `{name_gender, select, …}` in the translation. Core 0.6 types a call's params from the phrase as written, so passing `name_gender` is a type error, and a `select` with no argument takes its `other` branch. Every gendered translation renders its neutral form: a correct sentence, not a gendered one. Core 0.7 accepts `name_gender`; here, wait for the binding to move to it. Do not work around it with ICU.
 
 ---
 

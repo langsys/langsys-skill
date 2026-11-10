@@ -103,6 +103,22 @@ the API flattens each plural to the one form its language uses for several thing
 English, `many` in Russian, `few` in Arabic) and a select to its `other` branch; write the
 sentence flat all the same.
 
+The rule leaves two gaps, and each has its own answer:
+
+- **Gender forms need the gender passed.** In a language with grammatical gender, Langsys can
+  turn `{name}` into `{name_gender, select, …}` in the translation. Pass `name_gender`
+  (`female`, `male`) beside `name` on `langsys-js-typescript` ≥ 0.7 (and so `langsys-js-svelte`
+  4.x) and `langsys/langsys-php` 2.x. Core 0.6, which `langsys-js-react` 0.6.x, `langsys-js-vue`
+  0.2.x and `langsys-js-svelte` 3.x run on, types a call's params from the phrase as written, so
+  passing `name_gender` is a type error. There, and on `langsys/langsys-php` 1.x, every gendered translation
+  renders its neutral `other` form. That is a correct sentence, but not a gendered one, and it is
+  not a bug to fix with ICU.
+- **No SDK formats a time of day.** A `Date` in `{placeholder}` renders as a date only, in the
+  medium style (`Mar 14, 2026`), in every SDK. For a time, pass a string the app formatted
+  itself in the locale the page renders in, for example
+  `new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(d)`. Do not write
+  `{d, time}`.
+
 **3. The source text is the key.** No `locales/en.json`, no `messages/`, no dot-keys.
 `t('home.welcome')` registers the literal string `home.welcome`. If a project being migrated
 has catalog files, they are *inputs* to the migration, not something to recreate.

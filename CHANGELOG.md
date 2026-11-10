@@ -13,6 +13,15 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 
 ## Unreleased
 
+- `SKILL.md` rule 2 (never write ICU) names its two gaps. **Gender forms** need `name_gender`
+  passed beside `name`. `langsys-js-typescript` 0.7.3 and `langsys/langsys-php` 2.2.1 accept it.
+  Core 0.6.5, under React 0.6.x, Vue 0.2.x and Svelte 3.x, types params from the written phrase
+  and rejects it, so a gendered translation renders its neutral `other` form there.
+  **No SDK formats a time of day.** A `Date` renders `dateStyle: medium` in core 0.6.5 and
+  0.7.3, and `IntlDateFormatter::MEDIUM`/`NONE` in langsys-php 2.2.1, so a time is passed as a
+  string the app formatted. `pinned/core-0.6/interpolation.md` carries both, and now says
+  that plurals follow the loaded catalog's locale. Reported by the React tab, and checked
+  against the published packages.
 - `categories.md`: a whole renamed category moves with one setting in `langsys/langsys-php`
   ≥ 2.2.1, the Client option `previous_categories` (`messages_previous_category` for the
   messages category), checked in the v2.2.1 archive (9585bc5, which Packagist serves). It names
