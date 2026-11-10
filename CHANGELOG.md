@@ -11,6 +11,14 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
+## Unreleased
+
+- `SKILL.md` rule 2: `langsys/langsys-php` 2.2.2 formats a number other than the count inside
+  plural and gender forms (`Ana zahlte 1.234,5` in de-DE, where 2.2.1 gave `1234.5`). This was
+  checked by running the v2.2.2 archive (7acc265, which Packagist serves). The advice to pass
+  such numbers as formatted strings now applies to the JS SDKs and to PHP before 2.2.2.
+  `sdk-versions.md` names 2.2.2 as Packagist's latest.
+
 ## 0.3.4 - 2026-11-09
 
 - `SKILL.md` rule 2 (never write ICU) names its two gaps. **Gender forms** need `name_gender`

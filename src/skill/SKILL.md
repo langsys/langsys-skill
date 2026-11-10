@@ -120,7 +120,8 @@ The rule leaves two gaps, and each has its own answer:
 - **Format dates, times and every number but the count yourself, and pass them as strings.**
   The server decides per language which sentences get plural or gender forms, so a call cannot
   know whether its sentence has them, and inside such a sentence two things go wrong:
-  - **Numbers** other than the count render unformatted (`1234.5`, not `1.234,5`) in every SDK.
+  - **Numbers** other than the count render unformatted (`1234.5`, not `1.234,5`), in every SDK
+    except `langsys/langsys-php` ≥ 2.2.2, which formats them for the locale.
   - **Dates** on core 0.6 do not render as text. `t()` returns an array holding the raw `Date`.
     React throws *Objects are not valid as a React child*. A Vue template prints the array as
     JSON. `<Phrase>`, `<Translate>` and `langsys-js-svelte` 3.x's `$t` print it joined with commas, with the
