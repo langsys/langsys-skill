@@ -11,7 +11,7 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
-## Unreleased
+## 0.3.4 - 2026-11-09
 
 - `SKILL.md` rule 2 (never write ICU) names its two gaps. **Gender forms** need `name_gender`
   passed beside `name`. `langsys-js-typescript` 0.7.3 and `langsys/langsys-php` 2.2.1 accept it
