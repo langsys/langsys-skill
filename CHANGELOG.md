@@ -25,8 +25,9 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
   number renders unformatted in core 0.6.5, core 0.7.3 and langsys-php 2.2.1 alike. On core
   0.6.5 a `Date` comes back as an array, which crashes a React render.
   `pinned/core-0.6/interpolation.md` carries the core 0.6 side, including a fallback for the
-  catalog locale (which starts empty), Vue's ref, and the request's locale on the server. The
-  react-intl and vue-i18n migration guides no longer say a raw number or `Date` param is formatted. It also says that plurals follow the loaded catalog's locale.
+  catalog locale (which starts empty), Vue's ref, and the request's locale on the server. It also
+  says that plurals follow the loaded catalog's locale. The react-intl and vue-i18n migration
+  guides no longer say a raw number or `Date` param is formatted.
   `pinned/core-0.6/troubleshooting.md` no longer says the gender param cannot be supplied.
   Reported by the React tab, and checked by running the published packages.
 - `categories.md`: a whole renamed category moves with one setting in `langsys/langsys-php`

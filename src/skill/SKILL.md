@@ -123,7 +123,7 @@ The rule leaves two gaps, and each has its own answer:
   - **Numbers** other than the count render unformatted (`1234.5`, not `1.234,5`) in every SDK.
   - **Dates** on core 0.6 do not render as text. `t()` returns an array holding the raw `Date`.
     React throws *Objects are not valid as a React child*. A Vue template prints the array as
-    JSON. `<Phrase>`, `<Translate>` and Svelte 3's `$t` print it joined with commas, with the
+    JSON. `<Phrase>`, `<Translate>` and `langsys-js-svelte` 3.x's `$t` print it joined with commas, with the
     `Date` in its raw `toString()` form in the host's time zone.
 
   No SDK formats a time of day either. A `Date` renders as a date only, in the medium style

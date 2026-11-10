@@ -135,7 +135,7 @@ Locale in Pinia already? Use `refToLocaleSource(localeRef)` rather than creating
 
 **`v-t` directive** has no equivalent; convert to an interpolation.
 
-**Number/date formatters** (`$n`, `$d`, with `numberFormats` / `datetimeFormats` config) are not part of Langsys. Keep `Intl.NumberFormat` / `Intl.DateTimeFormat`, and pass what they return into `params` as a string. Do not pass a raw `number` or `Date` other than a count. Once Langsys gives a sentence plural or gender forms, a number renders unformatted and a `Date` prints as raw JSON ([rule 2](../../SKILL.md)).
+**Number/date formatters** (`$n`, `$d`, with `numberFormats` / `datetimeFormats` config) are not part of Langsys. Keep `Intl.NumberFormat` / `Intl.DateTimeFormat`, and pass what they return into `params` as a string. Do not pass a raw `number` or `Date` other than a count. Once Langsys gives a sentence plural or gender forms, a number renders unformatted and a `Date` prints as raw JSON in a template ([rule 2](../../SKILL.md)).
 
 ## Verify
 
