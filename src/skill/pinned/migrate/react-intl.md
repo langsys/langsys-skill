@@ -40,8 +40,8 @@ A `select` whose branches say different things in the source language (`{platfor
 | `defineMessages({ … })` | delete — phrases live at the call site |
 | `<IntlProvider locale messages>` | `LangsysGate` calling `LangsysApp.init()` |
 | `intl.locale` | `useCurrentLocale()` |
-| `<FormattedNumber value={n} />` | keep `Intl.NumberFormat` directly; in a sentence, pass it as a param (`t('Total: {n}', 'Cat', { n })`), which formats it for the locale |
-| `<FormattedDate value={d} />` | keep `Intl.DateTimeFormat` directly; in a sentence, pass it as a param (`t('Sent on {d}', 'Cat', { d })`) |
+| `<FormattedNumber value={n} />` | keep `Intl.NumberFormat` directly; in a sentence, pass the formatted string as a param (`t('Total: {n}', 'Cat', { n: nf.format(total) })`). A raw number is left unformatted once Langsys gives the sentence plural or gender forms ([rule 2](../../SKILL.md)) |
+| `<FormattedDate value={d} />` | keep `Intl.DateTimeFormat` directly; in a sentence, pass the formatted string (`t('Sent on {d}', 'Cat', { d: df.format(sent) })`). A raw `Date` breaks the render on core 0.6 once the sentence has plural or gender forms |
 
 ## `defineMessages` is your resolution table
 
