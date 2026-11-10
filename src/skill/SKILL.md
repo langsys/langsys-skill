@@ -107,17 +107,23 @@ The rule leaves two gaps, and each has its own answer:
 
 - **Gender forms need the gender passed.** In a language with grammatical gender, Langsys can
   turn `{name}` into `{name_gender, select, …}` in the translation. Pass `name_gender`
-  (`female`, `male`) beside `name` on `langsys-js-typescript` ≥ 0.7 (and so `langsys-js-svelte`
-  4.x) and `langsys/langsys-php` 2.x. Core 0.6, which `langsys-js-react` 0.6.x, `langsys-js-vue`
-  0.2.x and `langsys-js-svelte` 3.x run on, types a call's params from the phrase as written, so
-  passing `name_gender` is a type error. There, and on `langsys/langsys-php` 1.x, every gendered translation
-  renders its neutral `other` form. That is a correct sentence, but not a gendered one, and it is
-  not a bug to fix with ICU.
+  (`female`, `male`) beside `name`. `langsys-js-typescript` ≥ 0.7 (and so `langsys-js-svelte`
+  4.x) and `langsys/langsys-php` 2.x accept it in any call. Core 0.6, which `langsys-js-react`
+  0.6.x, `langsys-js-vue` 0.2.x and `langsys-js-svelte` 3.x run on, types `t()`'s params from
+  the phrase as written, so an object literal carrying `name_gender` is a type error. Its runtime
+  uses the param all the same. Pass it in a `<Phrase>` or `<Translate>` `params` prop, or in a
+  params object built before the call, and the gendered form renders. Core 0.6's debug warning
+  that the key matches no placeholder is wrong for `name_gender`. Without the param a gendered
+  translation renders its neutral `other` form, which is a correct sentence but not a gendered
+  one. `langsys/langsys-php` 1.x never asks for these forms, so it always renders neutral.
 - **No SDK formats a time of day.** A `Date` in `{placeholder}` renders as a date only, in the
-  medium style (`Mar 14, 2026`), in every SDK. For a time, pass a string the app formatted
-  itself in the locale the page renders in, for example
-  `new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(d)`. Do not write
-  `{d, time}`.
+  medium style (`Mar 14, 2026`). On core 0.6 a `Date` in a sentence Langsys has made plural
+  does not render as text at all. Pass a string the app formatted itself, in the locale the page
+  renders in and the user's time zone: always for a time, and on core 0.6 for any date in a
+  sentence with a count. In JavaScript that is
+  `new Intl.DateTimeFormat(locale, { timeStyle: 'short', timeZone }).format(d)`, and in PHP
+  `(new IntlDateFormatter($locale, IntlDateFormatter::NONE, IntlDateFormatter::SHORT, $tz))->format($d)`.
+  Do not write `{d, time}`.
 
 **3. The source text is the key.** No `locales/en.json`, no `messages/`, no dot-keys.
 `t('home.welcome')` registers the literal string `home.welcome`. If a project being migrated

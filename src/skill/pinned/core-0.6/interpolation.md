@@ -73,8 +73,8 @@ To keep a literal `%WORD%` (e.g. a Windows env var like `%PATH%` in documentatio
 
 Allowed types: `string | number | Date | boolean`.
 
-- **Numbers** → `Intl.NumberFormat` for the catalog locale (`1234.5` → `1.234,5` in `de-DE`)
-- **Dates** → `Intl.DateTimeFormat`, medium style (`Mar 14, 2026` / `14.03.2026`), **date only**. No form shows a time of day, and `{d, time}` is ICU written by hand. For a time, pass a string you formatted yourself, e.g. `new Intl.DateTimeFormat(locale, { timeStyle: 'short' }).format(d)`
+- **Numbers** → `Intl.NumberFormat` for the catalog locale (`1234.5` → `1.234,5` in `de-DE`). In a sentence Langsys has made plural, a number other than the count renders unformatted (`1234.5`). Pass that one as a string you formatted.
+- **Dates** → `Intl.DateTimeFormat`, medium style (`Mar 14, 2026` / `14.03.2026`), **date only**. No form shows a time of day, and `{d, time}` is ICU written by hand. In a sentence Langsys has made plural, a `Date` does not render as text at all: `t()` returns an array holding the raw `Date`. For a time, and for any date in a sentence with a count, pass a string you formatted yourself, in the catalog locale (`currentlyLoadedLocale.get()`) and the user's time zone, e.g. `new Intl.DateTimeFormat(locale, { timeStyle: 'short', timeZone }).format(d)`
 - **Strings** → passed through untouched
 
 Formatting uses the **catalog locale**, not the host's default, so server and client render identically. To opt out — IDs, codes, anything that must not get grouping separators — pass the value as a string.
@@ -91,11 +91,11 @@ Formatting uses the **catalog locale**, not the host's default, so server and cl
 t('You have {count} new messages', 'Inbox', { count });
 ```
 
-The core asks the API for those forms on every request (`X-Langsys-Capabilities: icu`) and `t()` renders them with full CLDR plural rules for the loaded catalog's locale, Arabic's six categories and Russian's four. That locale lags a locale change until the new catalog arrives. Until a phrase's base-language check has run, the base language shows the sentence as written. A sentence that says something different at zero is its own phrase, chosen in code.
+The core asks the API for those forms on every request (`X-Langsys-Capabilities: icu`) and `t()` renders them with full CLDR plural rules for the loaded catalog's locale, Arabic's six categories and Russian's four. That locale lags a locale change until just after the new catalog arrives. Until a phrase's base-language check has run, the base language shows the sentence as written. A sentence that says something different at zero is its own phrase, chosen in code.
 
 > This is the mechanism [choosing-primitives.md](./choosing-primitives.md) protects: a plural rule can only inflect a noun that is **in the same phrase** as the count. Splitting the sentence puts them in different catalog entries and makes the plural unexpressible.
 
-**Gender renders neutral on core 0.6.** In a language with grammatical gender, Langsys can turn `{name}` into `{name_gender, select, …}` in the translation. Core 0.6 types a call's params from the phrase as written, so passing `name_gender` is a type error, and a `select` with no argument takes its `other` branch. Every gendered translation renders its neutral form: a correct sentence, not a gendered one. Core 0.7 accepts `name_gender`; here, wait for the binding to move to it. Do not work around it with ICU.
+**Gender needs `name_gender` passed.** In a language with grammatical gender, Langsys can turn `{name}` into `{name_gender, select, …}` in the translation. Without `name_gender` the `select` takes its `other` branch and renders the neutral form, which is a correct sentence but not a gendered one. Core 0.6 types `t()`'s params from the phrase as written, so an object literal carrying `name_gender` is a type error, but the runtime uses it all the same. Pass it in the `<Phrase>` / `<Translate>` `params` prop, which is typed loosely, or in a params object built before the call: `const params = { name, name_gender: 'female' }; t('{name} has been invited', 'Team', params)`. Debug mode warns that `name_gender` matches no placeholder in the phrase. That warning is expected here. Do not work around it with ICU.
 
 ---
 

@@ -264,7 +264,7 @@ Users see something like:
 {name_gender, select, male {Bienvenido} female {Bienvenida} other {Bienvenide}} Sarah
 ```
 
-**An ICU argument is missing, and you almost certainly did nothing wrong.** The translation pipeline can *introduce* a `select` argument the source phrase never had: a plain `{name}` becomes `{name_gender, select, …}` in gendered target locales. Your app cannot supply `name_gender` — it does not exist in the phrase you wrote, and nothing announced that the target grew one.
+**An ICU argument is missing, and you almost certainly did nothing wrong.** The translation pipeline can *introduce* a `select` argument the source phrase never had: a plain `{name}` becomes `{name_gender, select, …}` in gendered target locales. `name_gender` does not exist in the phrase you wrote, and nothing announced that the target grew one. To render the gendered form rather than the neutral one, pass it — [interpolation.md](./interpolation.md#plurals-and-gender-write-the-sentence-flat).
 
 **Every app translating into a gendered locale hits this on affected versions.**
 
