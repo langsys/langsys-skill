@@ -510,11 +510,20 @@ const shims = {
         // our managed block while preserving any user content.
         removeManagedBlock(isGlobal ? join(base, '.gemini', 'GEMINI.md') : join(base, 'GEMINI.md'));
 
-        // Keep the explicit `/langsys` custom slash command for Gemini CLI,
-        // routing to the installed skill instead of duplicating CORE().
-        const skillPath = isGlobal ? '~/.agents/skills/langsys/SKILL.md' : '.agents/skills/langsys/SKILL.md';
-        write(join(base, '.gemini', 'commands', 'langsys.toml'),
-            `description = "Integrate or migrate this project onto the Langsys translation SDK"\n\nprompt = """\nUse the langsys skill (${skillPath}) to integrate or migrate this project onto the Langsys translation SDK.\n"""\n`);
+        // Keep explicit custom slash commands for Gemini CLI, routing to the
+        // installed skills instead of duplicating CORE() or the shims.
+        const skillsRoot = isGlobal ? '~/.agents/skills' : '.agents/skills';
+        for (const [cmd, desc, verb] of [
+            ['langsys', 'Integrate or migrate this project onto the Langsys translation SDK',
+                'integrate or migrate this project onto the Langsys translation SDK'],
+            ['langsys-scan', 'Size a Langsys translation job without starting an integration',
+                'size the Langsys translation job for this project'],
+            ['langsys-doctor', 'Check a Langsys setup for version, env, key, peer-floor and MCP issues',
+                'diagnose the Langsys setup for this project'],
+        ]) {
+            write(join(base, '.gemini', 'commands', `${cmd}.toml`),
+                `description = "${desc}"\n\nprompt = """\nUse the ${cmd} skill (${skillsRoot}/${cmd}/SKILL.md) to ${verb}.\n"""\n`);
+        }
     },
     cursor() {
         write(join(base, '.cursor', 'rules', 'langsys.mdc'),

@@ -1090,9 +1090,10 @@ test('global install never writes into the home root', () => {
     for (const [host, file] of [['codex', '.codex/AGENTS.md'], ['gemini', '.agents/skills/langsys/SKILL.md']]) {
         const out = run(['--global', '--dry-run', `--host=${host}`]);
         assert.match(out, new RegExp(file.replace(/\./g, '\\.')), `${host} global path`);
+        if (host === 'gemini') {
+            assert.doesNotMatch(out, /GEMINI\.md/, 'gemini global install must not plan to write GEMINI.md');
+        }
     }
-    assert.ok(!existsSync(join(fakeHome, 'GEMINI.md')),
-        'global install must not drop GEMINI.md in the home root');
     rmSync(fakeHome, { recursive: true, force: true });
 });
 
@@ -2522,9 +2523,9 @@ test('install: gemini installs SKILL.md skills under .agents/skills and routes /
         run(['-g', '--host=gemini']);
         run([`--dir=${proj}`, '--host=gemini']);
 
-        for (const [label, rootDir, skillBase, wantBin, avoidBin, wantTomlPath] of [
-            ['global', home, join(home, '.agents/skills'), /node ~\/\.langsys\/bin\//, /node \.langsys\/bin\//, '~/.agents/skills/langsys/SKILL.md'],
-            ['project', proj, join(proj, '.agents/skills'), /node \.langsys\/bin\//, /~\/\.langsys\/bin\//, '.agents/skills/langsys/SKILL.md'],
+        for (const [label, rootDir, skillBase, wantBin, avoidBin, wantSkillsRoot] of [
+            ['global', home, join(home, '.agents/skills'), /node ~\/\.langsys\/bin\//, /node \.langsys\/bin\//, '~/.agents/skills'],
+            ['project', proj, join(proj, '.agents/skills'), /node \.langsys\/bin\//, /~\/\.langsys\/bin\//, '.agents/skills'],
         ]) {
             // Entry skill + standalone scan/doctor shims + discovered SDK skill.
             for (const n of ['langsys', 'langsys-scan', 'langsys-doctor', 'langsys-typescript']) {
@@ -2540,16 +2541,21 @@ test('install: gemini installs SKILL.md skills under .agents/skills and routes /
                 const t = readFileSync(join(skillBase, n, 'SKILL.md'), 'utf8');
                 assert.match(t, wantBin, `${label}/${n}: tool paths must match install scope`);
                 assert.doesNotMatch(t, avoidBin, `${label}/${n}: must not leak the other scope`);
+
+                // Custom slash command routes to SKILL.md rather than duplicating CORE() or shims.
+                const tomlPath = join(rootDir, '.gemini/commands', `${n}.toml`);
+                assert.ok(existsSync(tomlPath), `${label}: ${n}.toml slash command must be installed`);
+                const toml = readFileSync(tomlPath, 'utf8');
+                assert.ok(toml.includes(`(${wantSkillsRoot}/${n}/SKILL.md)`),
+                    `${label}: ${n}.toml must point at (${wantSkillsRoot}/${n}/SKILL.md)`);
+                assert.ok(toml.length < 600, `${label}: ${n}.toml must stay a thin router, not inline CORE()`);
             }
 
-            // Custom slash command routes to SKILL.md rather than duplicating CORE().
-            const toml = readFileSync(join(rootDir, '.gemini/commands/langsys.toml'), 'utf8');
-            assert.ok(toml.includes(wantTomlPath), `${label}: langsys.toml must point at ${wantTomlPath}`);
-            assert.ok(toml.length < 600, `${label}: langsys.toml must stay a thin router, not inline CORE()`);
-
-            // Fresh install must not create always-on GEMINI.md rules.
-            const geminiMd = label === 'global' ? join(home, '.gemini/GEMINI.md') : join(proj, 'GEMINI.md');
-            assert.ok(!existsSync(geminiMd), `${label}: must not create GEMINI.md on fresh install`);
+            // Fresh install must not create always-on GEMINI.md rules anywhere.
+            assert.ok(!existsSync(join(rootDir, 'GEMINI.md')), `${label}: must not create GEMINI.md at root`);
+            if (label === 'global') {
+                assert.ok(!existsSync(join(home, '.gemini/GEMINI.md')), 'global: must not create ~/.gemini/GEMINI.md on fresh install');
+            }
         }
 
         // Every relative markdown link in the project-scoped .agents/skills/langsys/SKILL.md must resolve to a file.
