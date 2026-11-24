@@ -2,7 +2,7 @@
 
 **Point your coding agent at a project and it adds Langsys translations correctly** — the right SDK for the framework, wired up, with every user-visible string converted using the right primitive.
 
-Works in **Claude Code**, **Codex CLI**, **Gemini CLI**, and **Cursor**.
+Works in **Claude Code**, **Codex CLI**, **Gemini CLI / Antigravity**, and **Cursor**.
 
 ```bash
 npx langsys-skill install       # this project
@@ -111,16 +111,16 @@ recording which version the work was done against. A copy goes stale instead —
 `skills.json` records what was copied and `doctor` reports `match`, `stale` or `edited`,
 with `edited` warning you before a re-install discards someone's changes.
 
-Per host: `.claude/skills/langsys/SKILL.md` · `AGENTS.md` + `.codex/prompts/langsys.md` · `GEMINI.md` + `.gemini/commands/langsys.toml` · `.cursor/rules/langsys.mdc`
+Per host: `.claude/skills/langsys/SKILL.md` · `AGENTS.md` + `.codex/prompts/langsys.md` · `.agents/skills/langsys/SKILL.md` + `.gemini/commands/langsys.toml` · `.cursor/rules/langsys.mdc`
 
-Claude Code also gets two standalone entry points, because both answer a question people ask **without** wanting an integration:
+Claude Code and Gemini also get two standalone entry points, because both answer a question people ask **without** wanting an integration:
 
 - **`/langsys-scan`** — how big is this job?
 - **`/langsys-doctor`** — why isn't this working?
 
 They are thin routers over the same payload, never copies. Same tools are on `PATH` as `npx langsys-scan` / `npx langsys-doctor` for anyone not in Claude Code.
 
-Claude Code gets progressive disclosure into the guides; the others inline the rules that must not be missed. Re-run to upgrade — shared files are edited only between managed markers, so your own content is never touched, and an unchanged re-install writes nothing.
+Claude Code and Gemini (Gemini CLI / Antigravity) get progressive disclosure into the guides and installed SDK skills; the others inline the rules that must not be missed. Re-run to upgrade — shared files are edited only between managed markers, so your own content is never touched, and an unchanged re-install writes nothing.
 
 Options: `--host=claude,codex,gemini,cursor` · `--dir=<path>` · `--dry-run`
 

@@ -3,8 +3,9 @@
  * langsys-skill installer.
  *
  * Writes ONE canonical markdown payload, then generates thin per-host shims that
- * point into it. Claude Code gets progressive disclosure; Codex/Gemini/Cursor have
- * no equivalent, so their entry docs inline the rules that must not be missed.
+ * point into it. Claude Code and Gemini (Gemini CLI / Antigravity) get
+ * progressive-disclosure skills; Codex and Cursor have no equivalent here, so
+ * their entry docs inline the rules that must not be missed.
  *
  *   npx langsys-skill install                 # project scope, auto-detect hosts
  *   npx langsys-skill install --global        # user scope
@@ -108,6 +109,7 @@ const base = isGlobal ? homedir() : target;
 
 const written = [];
 const skipped = [];
+const removed = [];
 
 function write(path, content) {
     if (existsSync(path) && readFileSync(path, 'utf8') === content) {
@@ -155,12 +157,36 @@ function writeManagedBlock(path, body) {
     let next;
     if (existsSync(path)) {
         const existing = readFileSync(path, 'utf8');
+        ANY_BLOCK.lastIndex = 0;
         next = ANY_BLOCK.test(existing)
             ? existing.replace(ANY_BLOCK, block)
             : existing.trimEnd() + '\n\n' + block;
     } else {
         next = block;
     }
+    write(path, next);
+}
+
+/**
+ * Strip a previously installed managed block, preserving user content.
+ *
+ * Used when a host graduates from an always-on rules block (e.g. GEMINI.md) to
+ * progressive-disclosure skills: leaving the old block behind would keep a
+ * stale copy of the rules active in every unrelated session. If the file held
+ * nothing besides our block, remove the now-empty file; if the file has no
+ * markers at all, leave it untouched.
+ */
+function removeManagedBlock(path) {
+    if (!existsSync(path)) return;
+    const existing = readFileSync(path, 'utf8');
+    const stripped = existing.replace(ANY_BLOCK, '');
+    if (stripped === existing) return;
+    if (stripped.trim() === '') {
+        if (!dryRun) rmSync(path, { force: true });
+        removed.push(path);
+        return;
+    }
+    const next = stripped.replace(/^\n+/, '').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
     write(path, next);
 }
 
@@ -246,9 +272,13 @@ function countFiles(dir) {
 const SKILLS_DIR = () => join(base, '.langsys', 'skills');
 const MANIFEST = () => join(base, '.langsys', 'skills.json');
 /** Where a named skill lives for Claude Code, in the scope being installed. */
-const claudeSkillDir = (n) => (isGlobal
-    ? join(homedir(), '.claude', 'skills', n)
-    : join(base, '.claude', 'skills', n));
+const claudeSkillDir = (n) => join(base, '.claude', 'skills', n);
+/**
+ * Where a named skill lives for Agent-Skills-compatible hosts (Gemini CLI and
+ * Antigravity both scan `.agents/skills/` in project scope and
+ * `~/.agents/skills/` in global scope).
+ */
+const agentsSkillDir = (n) => join(base, '.agents', 'skills', n);
 
 // Discovery runs against the PROJECT, even under --global: skills belong to the
 // packages a project installed, and a home directory has no node_modules. The
@@ -291,7 +321,7 @@ function pruneRemovedSkills(keep) {
     const gone = [];
     for (const rec of prev.skills) {
         if (keep.has(rec.name)) continue;
-        for (const dir of [join(SKILLS_DIR(), rec.name), claudeSkillDir(rec.name)]) {
+        for (const dir of [join(SKILLS_DIR(), rec.name), claudeSkillDir(rec.name), agentsSkillDir(rec.name)]) {
             if (!existsSync(dir)) continue;
             if (!dryRun) rmSync(dir, { recursive: true, force: true });
             gone.push(dir);
@@ -417,44 +447,48 @@ Splitting a sentence that contains \`<strong>\` shreds it and makes the plural u
 
 // ── shims ────────────────────────────────────────────────────────────────────
 
+/** Install progressive-disclosure SKILL.md shims and discovered SDK skills. */
+function installSkillShims(skillDir) {
+    const payload = readFileSync(join(pkgRoot, 'src', 'skill', 'SKILL.md'), 'utf8');
+    // Hosts with progressive disclosure get the router itself with links
+    // resolved to the installed payload. Two rewrites, because each shim lives
+    // three directories deep (`.claude/skills/langsys/` or
+    // `.agents/skills/langsys/`): `./` links point into the payload, and
+    // `../VERIFIED.md` points beside it. The payload's own copy stays correct
+    // for readers who open it directly.
+    const root_ = isGlobal ? '~/.langsys' : '../../../.langsys';
+    write(join(skillDir('langsys'), 'SKILL.md'), scopePaths(payload
+        .replace(/\]\(\.\.\/VERIFIED\.md\)/g, `](${root_}/VERIFIED.md)`)
+        .replace(/\]\(\.\//g, `](${root_}/skill/`)));
+
+    // Two standalone entry points, because both answer a question someone
+    // asks WITHOUT wanting an integration: "how big is this job?" and "why
+    // isn't this working?". Routing those through /langsys means starting a
+    // conversion to ask a question about one.
+    //
+    // They are thin routers over the same payload, never copies of it — a
+    // second copy of the guidance is a second thing to go stale, and this
+    // project has a whole section on what stranded copies cost.
+    for (const n of ['scan', 'doctor']) {
+        write(join(skillDir(`langsys-${n}`), 'SKILL.md'),
+              scopePaths(readFileSync(join(pkgRoot, 'src', 'shims', `${n}.md`), 'utf8')));
+    }
+
+    // Each SDK's own skill becomes a real host skill, so progressive
+    // disclosure reaches it by name. Copied verbatim: the SDK's lane owns
+    // the text, and rewriting it here would make this package the source of
+    // a document it does not maintain.
+    for (const s of discovered.skills) {
+        const dir_ = skillDir(s.name);
+        for (const f of filesUnder(s.dir)) {
+            writeBytes(join(dir_, f), readFileSync(join(s.dir, f)));
+        }
+    }
+}
+
 const shims = {
     claude() {
-        const dir = isGlobal ? join(homedir(), '.claude', 'skills', 'langsys') : join(base, '.claude', 'skills', 'langsys');
-        const payload = readFileSync(join(pkgRoot, 'src', 'skill', 'SKILL.md'), 'utf8');
-        // Claude supports progressive disclosure, so the shim is the router itself
-        // with links resolved to the installed payload.
-        // Two rewrites, because the shim lives at a third location: `./` links
-        // point into the payload, and `../VERIFIED.md` points beside it. The
-        // payload's own copy stays correct for readers who open it directly.
-        const root_ = isGlobal ? '~/.langsys' : '../../../.langsys';
-        write(join(dir, 'SKILL.md'), scopePaths(payload
-            .replace(/\]\(\.\.\/VERIFIED\.md\)/g, `](${root_}/VERIFIED.md)`)
-            .replace(/\]\(\.\//g, `](${root_}/skill/`)));
-
-        // Two standalone entry points, because both answer a question someone
-        // asks WITHOUT wanting an integration: "how big is this job?" and "why
-        // isn't this working?". Routing those through /langsys means starting a
-        // conversion to ask a question about one.
-        //
-        // They are thin routers over the same payload, never copies of it — a
-        // second copy of the guidance is a second thing to go stale, and this
-        // project has a whole section on what stranded copies cost.
-        const shimDir = claudeSkillDir;
-        for (const n of ['scan', 'doctor']) {
-            write(join(shimDir(`langsys-${n}`), 'SKILL.md'),
-                  scopePaths(readFileSync(join(pkgRoot, 'src', 'shims', `${n}.md`), 'utf8')));
-        }
-
-        // Each SDK's own skill becomes a real Claude skill, so progressive
-        // disclosure reaches it by name. Copied verbatim: the SDK's lane owns
-        // the text, and rewriting it here would make this package the source of
-        // a document it does not maintain.
-        for (const s of discovered.skills) {
-            const dir_ = shimDir(s.name);
-            for (const f of filesUnder(s.dir)) {
-                writeBytes(join(dir_, f), readFileSync(join(s.dir, f)));
-            }
-        }
+        installSkillShims(claudeSkillDir);
     },
     codex() {
         // Global scope: Codex reads ~/.codex/AGENTS.md. Never drop AGENTS.md in
@@ -464,10 +498,23 @@ const shims = {
             `# /langsys\n\nIntegrate or migrate this project onto the Langsys translation SDK.\n\n${CORE()}\n`);
     },
     gemini() {
-        // Same reasoning as codex(): global scope belongs under ~/.gemini/.
-        writeManagedBlock(isGlobal ? join(base, '.gemini', 'GEMINI.md') : join(base, 'GEMINI.md'), CORE());
+        // Both Gemini CLI and Antigravity discover Agent Skills under
+        // `.agents/skills/` (project) and `~/.agents/skills/` (global). Using
+        // `.agents/skills/` rather than `.gemini/skills/` covers both hosts
+        // without duplicating skills that Gemini CLI would scan twice.
+        installSkillShims(agentsSkillDir);
+
+        // Older versions inlined CORE() into GEMINI.md because Gemini lacked
+        // progressive-disclosure skills. Leaving that block behind on upgrade
+        // keeps a stale copy active in every unrelated session, so strip only
+        // our managed block while preserving any user content.
+        removeManagedBlock(isGlobal ? join(base, '.gemini', 'GEMINI.md') : join(base, 'GEMINI.md'));
+
+        // Keep the explicit `/langsys` custom slash command for Gemini CLI,
+        // routing to the installed skill instead of duplicating CORE().
+        const skillPath = isGlobal ? '~/.agents/skills/langsys/SKILL.md' : '.agents/skills/langsys/SKILL.md';
         write(join(base, '.gemini', 'commands', 'langsys.toml'),
-            `description = "Integrate or migrate this project onto the Langsys translation SDK"\n\nprompt = """\n${CORE().replace(/"""/g, '\\"\\"\\"')}\n"""\n`);
+            `description = "Integrate or migrate this project onto the Langsys translation SDK"\n\nprompt = """\nUse the langsys skill (${skillPath}) to integrate or migrate this project onto the Langsys translation SDK.\n"""\n`);
     },
     cursor() {
         write(join(base, '.cursor', 'rules', 'langsys.mdc'),
@@ -510,6 +557,7 @@ if (manifest.skills.length) {
 }
 console.log();
 for (const p of written) console.log(`  + ${p.replace(base + '/', '')}`);
+for (const p of removed) console.log(`  - ${p.replace(base + '/', '')} (replaced by skills)`);
 for (const p of manifest.removed ?? []) console.log(`  - ${p} (package no longer installed)`);
 for (const p of skipped) console.log(`  = ${p.replace(base + '/', '')} (unchanged)`);
 console.log(`\n${written.length} written, ${skipped.length} unchanged.`);

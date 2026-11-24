@@ -515,10 +515,11 @@ test('every list of the rules every SDK shares says never to write a plural or a
         assert.match(readFileSync(join(root, 'src/skill', file), 'utf8'), rule, `${file} must carry the rule`);
     }
 
-    // Codex, Gemini and Cursor get the installer's own copy of the rules, not SKILL.md.
+    // Codex and Cursor get the installer's own copy of the rules; Gemini gets
+    // SKILL.md under .agents/skills/langsys/SKILL.md.
     const dir = mkdtempSync(join(tmpdir(), 'langsys-rules-'));
     execFileSync('node', [join(root, 'src/bin/install.mjs'), `--dir=${dir}`, '--host=codex,gemini,cursor'], { encoding: 'utf8' });
-    for (const file of ['AGENTS.md', 'GEMINI.md', '.cursor/rules/langsys.mdc']) {
+    for (const file of ['AGENTS.md', '.agents/skills/langsys/SKILL.md', '.cursor/rules/langsys.mdc']) {
         assert.match(readFileSync(join(dir, file), 'utf8'), rule, `${file} must carry the rule`);
     }
 
@@ -1086,10 +1087,12 @@ test('global install never writes into the home root', () => {
     assert.ok(existsSync(join(fakeHome, '.langsys', 'AGENTS.md')),
         'the generic entry doc belongs beside the payload');
 
-    for (const [host, file] of [['codex', '.codex/AGENTS.md'], ['gemini', '.gemini/GEMINI.md']]) {
+    for (const [host, file] of [['codex', '.codex/AGENTS.md'], ['gemini', '.agents/skills/langsys/SKILL.md']]) {
         const out = run(['--global', '--dry-run', `--host=${host}`]);
-        assert.match(out, new RegExp(file.replace('.', '\\.')), `${host} global path`);
+        assert.match(out, new RegExp(file.replace(/\./g, '\\.')), `${host} global path`);
     }
+    assert.ok(!existsSync(join(fakeHome, 'GEMINI.md')),
+        'global install must not drop GEMINI.md in the home root');
     rmSync(fakeHome, { recursive: true, force: true });
 });
 
@@ -2506,5 +2509,132 @@ test('tree: a directory link fails the pre-release gate and is reported in the s
         assert.match(r.out, /does not exist in src\/skill/);
     } finally {
         rmSync(join(root, 'node_modules', 'langsys-fixture-published'), { recursive: true, force: true });
+    }
+});
+
+test('install: gemini installs SKILL.md skills under .agents/skills and routes /langsys to them', () => {
+    const home = mkdtempSync(join(tmpdir(), 'langsys-gemini-'));
+    const proj = projectWithSkill();
+    const run = (args, cwd = proj) => execFileSync('node', [join(root, 'src/bin/install.mjs'), ...args],
+        { encoding: 'utf8', cwd, env: { ...process.env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+
+    try {
+        run(['-g', '--host=gemini']);
+        run([`--dir=${proj}`, '--host=gemini']);
+
+        for (const [label, rootDir, skillBase, wantBin, avoidBin, wantTomlPath] of [
+            ['global', home, join(home, '.agents/skills'), /node ~\/\.langsys\/bin\//, /node \.langsys\/bin\//, '~/.agents/skills/langsys/SKILL.md'],
+            ['project', proj, join(proj, '.agents/skills'), /node \.langsys\/bin\//, /~\/\.langsys\/bin\//, '.agents/skills/langsys/SKILL.md'],
+        ]) {
+            // Entry skill + standalone scan/doctor shims + discovered SDK skill.
+            for (const n of ['langsys', 'langsys-scan', 'langsys-doctor', 'langsys-typescript']) {
+                const f = join(skillBase, n, 'SKILL.md');
+                assert.ok(existsSync(f), `${label}: ${n} must be installed under .agents/skills`);
+                const t = readFileSync(f, 'utf8');
+                assert.match(t, new RegExp(`^---\\nname: ${n}\\n`), `${label}/${n}: frontmatter name must match dir`);
+            }
+            assert.ok(existsSync(join(skillBase, 'langsys-typescript/extra.md')),
+                `${label}: SDK skill companion files must also be copied`);
+
+            for (const n of ['langsys', 'langsys-scan', 'langsys-doctor']) {
+                const t = readFileSync(join(skillBase, n, 'SKILL.md'), 'utf8');
+                assert.match(t, wantBin, `${label}/${n}: tool paths must match install scope`);
+                assert.doesNotMatch(t, avoidBin, `${label}/${n}: must not leak the other scope`);
+            }
+
+            // Custom slash command routes to SKILL.md rather than duplicating CORE().
+            const toml = readFileSync(join(rootDir, '.gemini/commands/langsys.toml'), 'utf8');
+            assert.ok(toml.includes(wantTomlPath), `${label}: langsys.toml must point at ${wantTomlPath}`);
+            assert.ok(toml.length < 600, `${label}: langsys.toml must stay a thin router, not inline CORE()`);
+
+            // Fresh install must not create always-on GEMINI.md rules.
+            const geminiMd = label === 'global' ? join(home, '.gemini/GEMINI.md') : join(proj, 'GEMINI.md');
+            assert.ok(!existsSync(geminiMd), `${label}: must not create GEMINI.md on fresh install`);
+        }
+
+        // Every relative markdown link in the project-scoped .agents/skills/langsys/SKILL.md must resolve to a file.
+        const projSkill = join(proj, '.agents/skills/langsys/SKILL.md');
+        let checked = 0;
+        for (const m of readFileSync(projSkill, 'utf8').matchAll(/\]\((\.[^)#\s]+)(#[^)]*)?\)/g)) {
+            const target = resolve(dirname(projSkill), m[1]);
+            assert.ok(existsSync(target) && statSync(target).isFile(),
+                `.agents/skills/langsys/SKILL.md link ${m[1]} must resolve to an installed file`);
+            checked++;
+        }
+        assert.ok(checked >= 10, `expected router links to be checked, got ${checked}`);
+
+        // Idempotent on re-run.
+        assert.match(run([`--dir=${proj}`, '--host=gemini']), /0 written/, 're-run must write nothing');
+        assert.match(run(['-g', '--host=gemini']), /0 written/, 'global re-run must write nothing');
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+        rmSync(proj, { recursive: true, force: true });
+    }
+});
+
+test('install: gemini strips legacy GEMINI.md managed block on upgrade without touching user content', () => {
+    const home = mkdtempSync(join(tmpdir(), 'langsys-gemini-upg-'));
+    const proj = mkdtempSync(join(tmpdir(), 'langsys-gemini-proj-'));
+    const run = (args) => execFileSync('node', [join(root, 'src/bin/install.mjs'), ...args],
+        { encoding: 'utf8', env: { ...process.env, HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+
+    const legacyBlock = '<!-- langsys:skill:start v0.3.0 -->\n## Langsys — critical rules\nold stuff\n<!-- langsys:skill:end -->\n';
+
+    try {
+        // 1. Global ~/.gemini/GEMINI.md with user memories + legacy managed block.
+        mkdirSync(join(home, '.gemini'), { recursive: true });
+        const globalGemini = join(home, '.gemini/GEMINI.md');
+        writeFileSync(globalGemini, `## Gemini Added Memories\n- Read CLAUDE.md\n\n${legacyBlock}`);
+
+        run(['-g', '--host=gemini']);
+        assert.equal(readFileSync(globalGemini, 'utf8'), '## Gemini Added Memories\n- Read CLAUDE.md\n',
+            'user content must survive and legacy managed block must be stripped');
+        assert.match(run(['-g', '--host=gemini']), /0 written/, 'subsequent run must be a no-op');
+
+        // 2. Project GEMINI.md containing ONLY our legacy block: dry-run preserves it, real run removes it.
+        const projGemini = join(proj, 'GEMINI.md');
+        writeFileSync(projGemini, legacyBlock);
+        const dryOut = run([`--dir=${proj}`, '--host=gemini', '--dry-run']);
+        assert.ok(existsSync(projGemini), '--dry-run must not delete block-only GEMINI.md');
+        assert.match(dryOut, /- GEMINI\.md \(replaced by skills\)/, '--dry-run must report the removal');
+
+        const realOut = run([`--dir=${proj}`, '--host=gemini']);
+        assert.ok(!existsSync(projGemini), 'block-only GEMINI.md must be removed on upgrade');
+        assert.match(realOut, /- GEMINI\.md \(replaced by skills\)/);
+        assert.match(run([`--dir=${proj}`, '--host=gemini']), /0 written/, 're-run after removal writes nothing');
+
+        // 3. User-authored GEMINI.md with no markers must be completely untouched.
+        const userOnly = '# Project instructions\n\nKeep this exact spacing.\n\n';
+        writeFileSync(projGemini, userOnly);
+        run([`--dir=${proj}`, '--host=gemini']);
+        assert.equal(readFileSync(projGemini, 'utf8'), userOnly, 'unmarked GEMINI.md must not be modified');
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+        rmSync(proj, { recursive: true, force: true });
+    }
+});
+
+test('install: uninstalling an SDK prunes its copied skill from .agents/skills without touching third-party skills', () => {
+    const dir = projectWithSkill();
+    const run = () => execFileSync('node', [join(root, 'src/bin/install.mjs'), `--dir=${dir}`, '--host=gemini'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+
+    try {
+        run();
+        const copied = join(dir, '.agents/skills/langsys-typescript');
+        assert.ok(existsSync(copied), 'precondition: SDK skill installed under .agents/skills');
+
+        const theirs = join(dir, '.agents/skills/somebody-elses-skill');
+        mkdirSync(theirs, { recursive: true });
+        writeFileSync(join(theirs, 'SKILL.md'), '# not ours\n');
+
+        rmSync(join(dir, 'node_modules/langsys-js-typescript'), { recursive: true, force: true });
+        const out = run();
+
+        assert.ok(!existsSync(copied), 'removed SDK skill must be pruned from .agents/skills');
+        assert.ok(existsSync(join(theirs, 'SKILL.md')), 'third-party skill under .agents/skills must survive');
+        assert.match(out, /\.agents\/skills\/langsys-typescript/, 'removal from .agents/skills must be reported');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
     }
 });
