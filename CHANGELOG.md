@@ -11,8 +11,17 @@ entry**, leaving `CLAUDE.md` stranded on the old signature for eleven releases:
 > consumers to update. `drift-guard` checks that every released tag has a section
 > here.
 
-## Unreleased
+## 0.3.5 - 2026-11-24
 
+- `install.mjs` (`--host=gemini`): Gemini CLI and Antigravity now get progressive-disclosure
+  `SKILL.md` skills under `.agents/skills/` (project) / `~/.agents/skills/` (global) — `langsys`,
+  `langsys-scan`, `langsys-doctor`, and every discovered SDK skill — matching Claude Code.
+  Uninstalling an SDK prunes its manifest-tracked copy from `.agents/skills/` without touching
+  third-party skills. `.gemini/commands/langsys.toml`, `langsys-scan.toml`, and
+  `langsys-doctor.toml` are written as thin slash-command routers to those skills instead of
+  duplicating `CORE()`. Re-running the installer strips any legacy managed block from
+  `GEMINI.md` / `~/.gemini/GEMINI.md` while preserving user content (removing the file only if
+  it held nothing else).
 - `SKILL.md` rule 2: `langsys/langsys-php` 2.2.2 formats a number other than the count inside
   plural and gender forms (`Ana zahlte 1.234,5` in de-DE, where 2.2.1 gave `1234.5`). This was
   checked by running the v2.2.2 archive (7acc265, which Packagist serves). The advice to pass
